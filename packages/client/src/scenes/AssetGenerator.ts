@@ -213,7 +213,14 @@ function generateParticles(scene: Phaser.Scene) {
   // Hit particle (star burst)
   const pg = scene.make.graphics({ x: 0, y: 0 });
   pg.fillStyle(0xffd93d);
-  pg.fillStar(8, 8, 5, 8, 3);
+  // Draw a simple diamond shape (fillStar not available in this Phaser version)
+  pg.beginPath();
+  pg.moveTo(8, 0);
+  pg.lineTo(16, 8);
+  pg.lineTo(8, 16);
+  pg.lineTo(0, 8);
+  pg.closePath();
+  pg.fillPath();
   pg.generateTexture("particle-star", 16, 16);
   pg.destroy();
 
