@@ -1,0 +1,29 @@
+{
+  "permissions": {
+    "allow": [
+      "WebSearch",
+      "WebFetch(domain:zeabur.com)",
+      "WebFetch(domain:opengameart.org)",
+      "WebFetch(domain:kenney.nl)",
+      "WebFetch(domain:itch.io)",
+      "Bash(pnpm install:*)",
+      "Bash(which npm:*)",
+      "Bash(npm install:*)",
+      "Bash(cd packages/shared && pnpm build 2>&1)",
+      "Bash(cd packages/server && pnpm build 2>&1)",
+      "Bash(cd /c/Users/Jesper/Desktop/how-wang/packages/server && pnpm build 2>&1)",
+      "Bash(cd /c/Users/Jesper/Desktop/how-wang/packages/server && pnpm add @colyseus/schema 2>&1)",
+      "Bash(pnpm remove:*)",
+      "Bash(pnpm build:*)",
+      "Bash(cd /c/Users/Jesper/Desktop/how-wang && pnpm --filter client build 2>&1)",
+      "Bash(cd \"C:/Users/Jesper/Desktop/how-wang\" && pnpm run build 2>&1)",
+      "Bash(curl -s http://localhost:3000/health 2>&1)",
+      "Bash(kill %1 2>/dev/null; kill %2 2>/dev/null)",
+      "Bash(cd \"C:/Users/Jesper/Desktop/how-wang\" && PORT=3001 pnpm dev:server 2>&1)",
+      "Bash(sleep 3 && curl -s http://localhost:3001/health)",
+      "Bash(cd \"C:/Users/Jesper/Desktop/how-wang\" && VITE_SERVER_URL=ws://localhost:3001 pnpm dev:client 2>&1)",
+      "Bash(which zeabur:*)",
+      "Bash(git --version 2>&1)"
+    ]
+  }
+}

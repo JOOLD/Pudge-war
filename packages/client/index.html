@@ -1,0 +1,279 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>🎣 勾肥大戰 - Pudge Wars Online</title>
+  <style>
+    @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
+
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+
+    body {
+      background: #2d5a27;
+      font-family: 'Nunito', sans-serif;
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      min-height: 100vh;
+      overflow: hidden;
+    }
+
+    #game-container {
+      position: relative;
+      border-radius: 16px;
+      overflow: hidden;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.3);
+    }
+
+    canvas {
+      display: block;
+    }
+
+    /* Lobby overlay */
+    #lobby {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(45, 90, 39, 0.95);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      gap: 16px;
+    }
+
+    #lobby.hidden { display: none; }
+
+    #lobby h1 {
+      font-size: 48px;
+      color: #ffd93d;
+      text-shadow: 3px 3px 0 #8b6914;
+      margin-bottom: 8px;
+    }
+
+    #lobby h2 {
+      font-size: 18px;
+      color: #a8d98a;
+      margin-bottom: 24px;
+    }
+
+    #lobby input, #lobby button {
+      font-family: 'Nunito', sans-serif;
+      font-size: 18px;
+      padding: 12px 24px;
+      border-radius: 12px;
+      border: 3px solid #5a9a3a;
+      outline: none;
+      width: 280px;
+      text-align: center;
+    }
+
+    #lobby input {
+      background: #fff;
+      color: #333;
+    }
+
+    #lobby input::placeholder { color: #aaa; }
+
+    #lobby button {
+      background: #ffd93d;
+      color: #5a3a00;
+      font-weight: 700;
+      cursor: pointer;
+      border-color: #e6c235;
+      transition: transform 0.1s;
+    }
+
+    #lobby button:hover {
+      transform: scale(1.05);
+    }
+
+    #lobby button:active {
+      transform: scale(0.95);
+    }
+
+    #lobby .btn-secondary {
+      background: #a8d98a;
+      border-color: #8bc66a;
+    }
+
+    #lobby .divider {
+      color: #7ab85a;
+      font-size: 14px;
+      margin: 4px 0;
+    }
+
+    #lobby .error {
+      color: #ff6b6b;
+      font-size: 14px;
+      min-height: 20px;
+    }
+
+    /* Room code display */
+    .room-code {
+      font-size: 36px;
+      font-weight: 900;
+      color: #ffd93d;
+      letter-spacing: 8px;
+      background: rgba(0,0,0,0.2);
+      padding: 8px 24px;
+      border-radius: 12px;
+    }
+
+    /* Waiting room */
+    #waiting {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(45, 90, 39, 0.95);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      gap: 12px;
+    }
+
+    #waiting.visible { display: flex; }
+
+    #waiting h2 { color: #ffd93d; font-size: 28px; }
+    #waiting .info { color: #a8d98a; font-size: 16px; }
+
+    .player-list {
+      display: flex;
+      gap: 32px;
+      margin: 16px 0;
+    }
+
+    .team-col {
+      text-align: center;
+      min-width: 160px;
+    }
+
+    .team-col h3 {
+      font-size: 18px;
+      margin-bottom: 8px;
+      padding: 4px 16px;
+      border-radius: 8px;
+    }
+
+    .team-left h3 { background: #7ecfb0; color: #2a5a4a; }
+    .team-right h3 { background: #f6a6b2; color: #5a2a33; }
+
+    .team-col .player-name {
+      color: #fff;
+      font-size: 16px;
+      padding: 4px 0;
+    }
+
+    #waiting button {
+      font-family: 'Nunito', sans-serif;
+      font-size: 20px;
+      padding: 12px 48px;
+      border-radius: 12px;
+      border: 3px solid #e6c235;
+      background: #ffd93d;
+      color: #5a3a00;
+      font-weight: 700;
+      cursor: pointer;
+      margin-top: 12px;
+    }
+
+    /* Kill feed */
+    #kill-feed {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      z-index: 5;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      pointer-events: none;
+    }
+
+    .kill-entry {
+      background: rgba(0,0,0,0.6);
+      color: #fff;
+      padding: 4px 12px;
+      border-radius: 8px;
+      font-size: 13px;
+      animation: fadeIn 0.3s ease;
+      white-space: nowrap;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateX(20px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    /* Game over overlay */
+    #game-over {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.7);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 10;
+      gap: 16px;
+    }
+
+    #game-over.visible { display: flex; }
+    #game-over h1 { font-size: 48px; color: #ffd93d; }
+    #game-over .score { font-size: 24px; color: #fff; }
+    #game-over button {
+      font-family: 'Nunito', sans-serif;
+      font-size: 20px; padding: 12px 48px; border-radius: 12px;
+      border: 3px solid #e6c235; background: #ffd93d; color: #5a3a00;
+      font-weight: 700; cursor: pointer; margin-top: 8px;
+    }
+  </style>
+</head>
+<body>
+  <div id="game-container">
+    <!-- Lobby -->
+    <div id="lobby">
+      <h1>🎣 勾肥大戰</h1>
+      <h2>Pudge Wars Online</h2>
+      <input id="nickname" type="text" placeholder="輸入暱稱..." maxlength="12" />
+      <button id="btn-create">建立房間</button>
+      <div class="divider">── 或 ──</div>
+      <input id="room-code-input" type="text" placeholder="輸入房間代碼" maxlength="4" style="text-transform:uppercase" />
+      <button id="btn-join" class="btn-secondary">加入房間</button>
+      <div class="error" id="error-msg"></div>
+    </div>
+
+    <!-- Waiting room -->
+    <div id="waiting">
+      <h2>等待玩家加入...</h2>
+      <div class="info">房間代碼</div>
+      <div class="room-code" id="display-room-code">----</div>
+      <div class="player-list">
+        <div class="team-col team-left">
+          <h3>🌿 左隊</h3>
+          <div id="team-left-players"></div>
+        </div>
+        <div class="team-col team-right">
+          <h3>🌸 右隊</h3>
+          <div id="team-right-players"></div>
+        </div>
+      </div>
+      <div class="info" id="waiting-info">至少需要 2 位玩家才能開始</div>
+      <button id="btn-start">開始遊戲！</button>
+    </div>
+
+    <!-- Kill feed -->
+    <div id="kill-feed"></div>
+
+    <!-- Game over -->
+    <div id="game-over">
+      <h1 id="winner-text"></h1>
+      <div class="score" id="final-score"></div>
+      <button id="btn-restart">再來一局！</button>
+    </div>
+  </div>
+
+  <script type="module" src="/src/main.ts"></script>
+</body>
+</html>
