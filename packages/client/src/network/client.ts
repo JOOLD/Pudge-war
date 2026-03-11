@@ -1,6 +1,15 @@
 import { Client, Room } from "colyseus.js";
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || "ws://localhost:3000";
+// In production (same-origin deploy), derive WS URL from current page location
+function getServerUrl(): string {
+  if (import.meta.env.VITE_SERVER_URL) {
+    return import.meta.env.VITE_SERVER_URL;
+  }
+  const proto = location.protocol === "https:" ? "wss:" : "ws:";
+  return `${proto}//${location.host}`;
+}
+
+const SERVER_URL = getServerUrl();
 
 let client: Client;
 let room: Room | null = null;
