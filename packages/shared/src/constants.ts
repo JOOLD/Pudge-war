@@ -47,7 +47,7 @@ export const GOLD_PASSIVE_RATE = 5; // per second
 export const ASSIST_WINDOW = 10000; // 10 seconds
 
 // === Game ===
-export const TICK_RATE = 60; // server updates per second
+export const TICK_RATE = 30; // server ticks/sec (client renders at 60fps with interpolation)
 export const KILLS_TO_WIN = 15; // games take longer now
 export const MAX_PLAYERS_PER_TEAM = 3;
 export const MAX_PLAYERS = MAX_PLAYERS_PER_TEAM * 2;

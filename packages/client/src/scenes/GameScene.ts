@@ -516,7 +516,7 @@ export class GameScene extends Phaser.Scene {
 
     // Update all player sprites with interpolation
     this.players.forEach((sprite, id) => {
-      const lerpFactor = Math.min(1, delta / 50); // smooth 50ms
+      const lerpFactor = Math.min(1, delta / 33); // smooth over ~33ms (30fps server tick)
 
       // Interpolate position
       const curX = sprite.container.x;

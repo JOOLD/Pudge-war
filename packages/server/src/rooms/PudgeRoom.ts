@@ -555,16 +555,20 @@ export class PudgeRoom extends Room<GameState> {
       player.aimX = input.aimX;
       player.aimY = input.aimY;
 
-      // Check if this player is being dismembered by someone else
+      // Check if this player is being pulled by someone's hook or dismembered
+      let isBeingPulled = false;
       let isBeingDismembered = false;
       this.state.players.forEach((other) => {
+        if (other.hook.state === "hit" && other.hook.targetId === sessionId) {
+          isBeingPulled = true;
+        }
         if (other.dismemberActive && other.dismemberTargetId === sessionId) {
           isBeingDismembered = true;
         }
       });
 
-      // Move player (only if not being pulled, channeling dismember, or being dismembered)
-      if ((player.hook.state !== "hit" || player.hook.targetId !== sessionId) && !player.dismemberActive && !isBeingDismembered) {
+      // Move player (skip if being pulled by hook, channeling dismember, or being dismembered)
+      if (!isBeingPulled && !player.dismemberActive && !isBeingDismembered) {
         let speed = this.getEffectiveMoveSpeed(player);
         // Apply slow effect from hook modifier (Lane C)
         if (player.slowTimer > 0 && player.slowPercent > 0) {
