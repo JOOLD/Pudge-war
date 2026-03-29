@@ -31,6 +31,7 @@ export const ROT_SELF_DAMAGE = 10; // damage per second to self
 // === Phase Shift Skill ===
 export const PHASE_DURATION = 1000; // 1 second
 export const PHASE_COOLDOWN = 12000; // 12 seconds
+export const PHASE_SPEED_MULT = 1.5; // speed multiplier during phase
 
 // === Dismember Skill ===
 export const DISMEMBER_RANGE = 40; // must be within this distance
@@ -109,33 +110,6 @@ export const COLORS = {
   hookChain: 0xc0c0c0,  // silver chain
   hookHead: 0xe8d44d,   // golden hook tip
 };
-
-// === Gold ===
-export const GOLD_PER_KILL = 100;
-export const GOLD_PER_ASSIST = 50;
-export const GOLD_PASSIVE_RATE = 5; // gold per second
-export const ASSIST_WINDOW = 10000; // ms
-
-// === Rot ===
-export const ROT_DAMAGE = 30; // damage per second
-export const ROT_RADIUS = 120;
-export const ROT_SELF_DAMAGE = 15; // damage per second to self
-export const ROT_COOLDOWN = 0; // toggle, no cooldown
-
-// === Phase ===
-export const PHASE_DURATION = 2000; // ms
-export const PHASE_COOLDOWN = 12000; // ms
-export const PHASE_SPEED_MULT = 1.5;
-
-// === Dismember ===
-export const DISMEMBER_DAMAGE = 80; // damage per second
-export const DISMEMBER_DURATION = 3000; // ms
-export const DISMEMBER_COOLDOWN = 30000; // ms
-export const DISMEMBER_RANGE = 150; // must be close
-
-// === Spawn healing ===
-export const SPAWN_HEAL_RADIUS = 150;
-export const SPAWN_HEAL_RATE = 20; // hp per second
 
 // === Upgrades ===
 export interface UpgradeDef {
