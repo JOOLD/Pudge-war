@@ -17,6 +17,7 @@ export const HOOK_MAX_RANGE = 500; // max distance hook can travel
 export const HOOK_COOLDOWN = 4000; // ms
 export const HOOK_PULL_SPEED = 400; // pixels per second when pulling target
 export const HOOK_DAMAGE = 100; // instant kill on pull
+export const HOOK_MAX_BOUNCES = 3; // max wall/obstacle bounces before hook expires
 
 // === Game ===
 export const TICK_RATE = 20; // server updates per second

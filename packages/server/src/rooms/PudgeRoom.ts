@@ -10,7 +10,8 @@ import {
 import { InputMessage, HookState, GamePhase } from "shared";
 import {
   movePlayer, moveHook, pullTarget, returnHook,
-  circleCollision, normalize,
+  circleCollision, normalize, checkHeadshots,
+  FlyingHook,
 } from "../physics/collision";
 
 export class PudgeRoom extends Room<GameState> {
@@ -125,6 +126,7 @@ export class PudgeRoom extends Room<GameState> {
       player.hookCooldown = 0;
       player.respawnTimer = 0;
       player.hook.state = "idle";
+      player.hook.bounces = 0;
       this.respawnPlayer(player);
     });
 
@@ -148,6 +150,7 @@ export class PudgeRoom extends Room<GameState> {
     player.hp = PLAYER_MAX_HP;
     player.alive = true;
     player.hook.state = "idle";
+    player.hook.bounces = 0;
   }
 
   private releaseHookedTarget(owner: PlayerSchema) {
@@ -158,6 +161,7 @@ export class PudgeRoom extends Room<GameState> {
       }
       owner.hook.state = "idle";
       owner.hook.targetId = "";
+      owner.hook.bounces = 0;
     }
   }
 
@@ -166,7 +170,16 @@ export class PudgeRoom extends Room<GameState> {
 
     const dt = 1 / TICK_RATE;
 
+    // Store previous hook positions for headshot detection
+    const flyingHooks: FlyingHook[] = [];
+
     this.state.players.forEach((player, sessionId) => {
+      // Capture previous hook position BEFORE movement
+      if (player.hook.state === "flying") {
+        player.hook.prevX = player.hook.x;
+        player.hook.prevY = player.hook.y;
+      }
+
       // Handle respawn timer
       if (!player.alive) {
         player.respawnTimer -= (1000 / TICK_RATE);
@@ -199,6 +212,63 @@ export class PudgeRoom extends Room<GameState> {
       // Handle hook
       this.updateHook(player, input, dt);
     });
+
+    // Collect flying hooks AFTER movement for headshot detection
+    this.state.players.forEach((player, sessionId) => {
+      if (player.hook.state === "flying") {
+        flyingHooks.push({
+          ownerId: sessionId,
+          ownerTeam: player.team,
+          x: player.hook.x,
+          y: player.hook.y,
+          prevX: player.hook.prevX,
+          prevY: player.hook.prevY,
+        });
+      }
+    });
+
+    // Check for headshots (crossing hooks from different teams)
+    if (flyingHooks.length >= 2) {
+      const playerList: Array<{ id: string; x: number; y: number; team: number; alive: boolean }> = [];
+      this.state.players.forEach((p, id) => {
+        playerList.push({ id, x: p.x, y: p.y, team: p.team, alive: p.alive });
+      });
+
+      const headshots = checkHeadshots(flyingHooks, playerList);
+      for (const hs of headshots) {
+        const victim = this.state.players.get(hs.victimId);
+        if (!victim || !victim.alive) continue;
+
+        // Instant kill
+        victim.alive = false;
+        victim.hp = 0;
+        victim.deaths++;
+        victim.respawnTimer = RESPAWN_TIME;
+
+        // Find killer (hook owner from opposite team closest to intersection)
+        // Credit kill to both hook owners
+        for (const fh of flyingHooks) {
+          if (fh.ownerTeam !== victim.team) {
+            const killer = this.state.players.get(fh.ownerId);
+            if (killer) {
+              killer.kills++;
+              if (killer.team === TEAM_LEFT) {
+                this.state.leftScore++;
+              } else {
+                this.state.rightScore++;
+              }
+              break; // Only credit one killer per victim
+            }
+          }
+        }
+
+        this.broadcast("headshot", {
+          victimName: victim.nickname,
+          x: hs.x,
+          y: hs.y,
+        });
+      }
+    }
 
     // Check win condition
     if (this.state.leftScore >= KILLS_TO_WIN) {
@@ -239,15 +309,34 @@ export class PudgeRoom extends Room<GameState> {
           hook.dirY = dir.y;
           hook.state = "flying";
           hook.targetId = "";
+          hook.bounces = 0;
+          hook.prevX = player.x;
+          hook.prevY = player.y;
           player.hookCooldown = HOOK_COOLDOWN;
         }
         break;
 
       case "flying": {
-        // Move hook forward
-        const result = moveHook(hook.x, hook.y, hook.dirX, hook.dirY, hook.startX, hook.startY, dt);
+        // Move hook forward with bounce support
+        const result = moveHook(
+          hook.x, hook.y, hook.dirX, hook.dirY,
+          hook.startX, hook.startY, dt,
+          hook.bounces
+        );
         hook.x = result.x;
         hook.y = result.y;
+        hook.dirX = result.dirX;
+        hook.dirY = result.dirY;
+        hook.bounces = result.newBounces;
+
+        // Broadcast bounce effect to clients
+        if (result.bounced) {
+          this.broadcast("hookBounce", {
+            x: result.x,
+            y: result.y,
+            ownerId: player.id,
+          });
+        }
 
         // Check out of range
         if (result.outOfRange) {
@@ -311,6 +400,7 @@ export class PudgeRoom extends Room<GameState> {
 
           hook.state = "idle";
           hook.targetId = "";
+          hook.bounces = 0;
 
           this.broadcast("kill", {
             killerName: player.nickname,
@@ -328,6 +418,7 @@ export class PudgeRoom extends Room<GameState> {
 
         if (ret.arrived) {
           hook.state = "idle";
+          hook.bounces = 0;
         }
         break;
       }

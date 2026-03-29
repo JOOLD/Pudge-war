@@ -1,7 +1,7 @@
 import {
   MAP_WIDTH, MAP_HEIGHT, PLAYER_RADIUS, RIVER_X, RIVER_WIDTH,
   HOOK_RADIUS, HOOK_MAX_RANGE, HOOK_SPEED, HOOK_PULL_SPEED,
-  PLAYER_SPEED, TEAM_LEFT, TEAM_RIGHT,
+  PLAYER_SPEED, TEAM_LEFT, TEAM_RIGHT, HOOK_MAX_BOUNCES,
 } from "shared";
 
 export interface Vec2 {
@@ -68,19 +68,68 @@ export function movePlayer(
   return clampPlayerPosition(newX, newY, team);
 }
 
-// Update hook position (flying state)
+// ─── Hook Movement with Wall Bounce ───────────────────────────────────────────
+
+export interface MoveHookResult {
+  x: number;
+  y: number;
+  dirX: number;
+  dirY: number;
+  outOfRange: boolean;
+  bounced: boolean;
+  newBounces: number;
+}
+
+// Update hook position (flying state) with wall bouncing
 export function moveHook(
   hx: number, hy: number, dirX: number, dirY: number,
-  startX: number, startY: number, dt: number
-): { x: number; y: number; outOfRange: boolean } {
-  const newX = hx + dirX * HOOK_SPEED * dt;
-  const newY = hy + dirY * HOOK_SPEED * dt;
+  startX: number, startY: number, dt: number,
+  bounces: number
+): MoveHookResult {
+  let newX = hx + dirX * HOOK_SPEED * dt;
+  let newY = hy + dirY * HOOK_SPEED * dt;
+  let newDirX = dirX;
+  let newDirY = dirY;
+  let bounced = false;
+  let newBounces = bounces;
+
+  // Check map boundary bouncing
+  if (newBounces < HOOK_MAX_BOUNCES) {
+    // Left/right walls
+    if (newX - HOOK_RADIUS <= 0) {
+      newX = HOOK_RADIUS;
+      newDirX = Math.abs(newDirX); // Reflect X
+      bounced = true;
+      newBounces++;
+    } else if (newX + HOOK_RADIUS >= MAP_WIDTH) {
+      newX = MAP_WIDTH - HOOK_RADIUS;
+      newDirX = -Math.abs(newDirX);
+      bounced = true;
+      newBounces++;
+    }
+
+    // Top/bottom walls
+    if (newY - HOOK_RADIUS <= 0) {
+      newY = HOOK_RADIUS;
+      newDirY = Math.abs(newDirY);
+      bounced = true;
+      newBounces++;
+    } else if (newY + HOOK_RADIUS >= MAP_HEIGHT) {
+      newY = MAP_HEIGHT - HOOK_RADIUS;
+      newDirY = -Math.abs(newDirY);
+      bounced = true;
+      newBounces++;
+    }
+  }
+
   const dist = distance({ x: newX, y: newY }, { x: startX, y: startY });
 
   return {
-    x: newX,
-    y: newY,
-    outOfRange: dist >= HOOK_MAX_RANGE,
+    x: newX, y: newY,
+    dirX: newDirX, dirY: newDirY,
+    outOfRange: dist >= HOOK_MAX_RANGE && !bounced,
+    bounced,
+    newBounces,
   };
 }
 
@@ -126,4 +175,75 @@ export function returnHook(
     y: hy + dir.y * HOOK_SPEED * dt,
     arrived: false,
   };
+}
+
+// ─── Headshot Detection ───────────────────────────────────────────────────────
+
+export interface FlyingHook {
+  ownerId: string;
+  ownerTeam: number;
+  x: number;
+  y: number;
+  prevX: number;
+  prevY: number;
+}
+
+// Check if two line segments intersect, return intersection point
+export function segmentsIntersect(
+  ax1: number, ay1: number, ax2: number, ay2: number,
+  bx1: number, by1: number, bx2: number, by2: number
+): { intersects: boolean; x: number; y: number } {
+  const d = (ax2 - ax1) * (by2 - by1) - (ay2 - ay1) * (bx2 - bx1);
+  if (Math.abs(d) < 0.001) return { intersects: false, x: 0, y: 0 };
+
+  const t = ((bx1 - ax1) * (by2 - by1) - (by1 - ay1) * (bx2 - bx1)) / d;
+  const u = -((ax2 - ax1) * (by1 - ay1) - (ay2 - ay1) * (bx1 - ax1)) / d;
+
+  if (t >= 0 && t <= 1 && u >= 0 && u <= 1) {
+    return {
+      intersects: true,
+      x: ax1 + t * (ax2 - ax1),
+      y: ay1 + t * (ay2 - ay1),
+    };
+  }
+  return { intersects: false, x: 0, y: 0 };
+}
+
+export function checkHeadshots(
+  hooks: FlyingHook[],
+  players: Array<{ id: string; x: number; y: number; team: number; alive: boolean }>
+): Array<{ victimId: string; x: number; y: number }> {
+  const results: Array<{ victimId: string; x: number; y: number }> = [];
+
+  // Check each pair of flying hooks from different teams
+  for (let i = 0; i < hooks.length; i++) {
+    for (let j = i + 1; j < hooks.length; j++) {
+      if (hooks[i].ownerTeam === hooks[j].ownerTeam) continue;
+
+      // Check if the two hook paths (line segments from prev to current position) intersect
+      const intersection = segmentsIntersect(
+        hooks[i].prevX, hooks[i].prevY, hooks[i].x, hooks[i].y,
+        hooks[j].prevX, hooks[j].prevY, hooks[j].x, hooks[j].y
+      );
+
+      if (intersection.intersects) {
+        // Check if any player is near the intersection point
+        for (const player of players) {
+          if (!player.alive) continue;
+          if (player.id === hooks[i].ownerId || player.id === hooks[j].ownerId) continue;
+
+          const dist = distance(
+            { x: player.x, y: player.y },
+            { x: intersection.x, y: intersection.y }
+          );
+
+          if (dist < PLAYER_RADIUS * 3) { // generous hitbox for headshot
+            results.push({ victimId: player.id, x: intersection.x, y: intersection.y });
+          }
+        }
+      }
+    }
+  }
+
+  return results;
 }
