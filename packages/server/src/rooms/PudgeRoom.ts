@@ -16,6 +16,10 @@ import {
   CONSUMABLES,
   // Hook modifier constants (Lane C)
   HOOK_MODIFIERS,
+  // Skill constants
+  PHASE_DURATION, PHASE_COOLDOWN,
+  DISMEMBER_RANGE, DISMEMBER_DAMAGE, DISMEMBER_DURATION, DISMEMBER_COOLDOWN,
+  ROT_DAMAGE, ROT_SELF_DAMAGE, ROT_RADIUS,
 } from "shared";
 import type { HookModifier } from "shared";
 import { InputMessage, HookState, GamePhase } from "shared";
@@ -57,6 +61,57 @@ export class PudgeRoom extends Room<GameState> {
     this.onMessage("restart", () => {
       if (this.state.phase === GamePhase.FINISHED) {
         this.restartGame();
+      }
+    });
+
+    // Handle skill activation (rot toggle, phase shift, dismember)
+    this.onMessage("skill", (client, msg: { skill: string }) => {
+      if (this.state.phase !== GamePhase.PLAYING) return;
+      const player = this.state.players.get(client.sessionId);
+      if (!player || !player.alive) return;
+
+      switch (msg.skill) {
+        case 'rot':
+          if (!player.hasRot) return;
+          // Toggle rot on/off
+          player.rotActive = !player.rotActive;
+          break;
+
+        case 'phase':
+          if (!player.hasPhase) return;
+          if (player.phaseCooldown > 0) return;
+          player.phaseActive = true;
+          player.phaseTimer = PHASE_DURATION;
+          player.phaseCooldown = PHASE_COOLDOWN;
+          this.broadcast("phaseShift", { sessionId: client.sessionId });
+          break;
+
+        case 'dismember': {
+          if (player.dismemberCooldown > 0) return;
+          // Find nearest enemy in range
+          let closestId = "";
+          let closestDist = DISMEMBER_RANGE + 1;
+          this.state.players.forEach((other, otherId) => {
+            if (otherId === client.sessionId) return;
+            if (other.team === player.team) return;
+            if (!other.alive) return;
+            const dist = distance(
+              { x: player.x, y: player.y },
+              { x: other.x, y: other.y }
+            );
+            if (dist < closestDist) {
+              closestDist = dist;
+              closestId = otherId;
+            }
+          });
+          if (!closestId) return;
+          player.dismemberActive = true;
+          player.dismemberTimer = DISMEMBER_DURATION;
+          player.dismemberCooldown = DISMEMBER_COOLDOWN;
+          player.dismemberTargetId = closestId;
+          this.broadcast("dismember", { sessionId: client.sessionId, targetId: closestId });
+          break;
+        }
       }
     });
 
@@ -243,6 +298,17 @@ export class PudgeRoom extends Room<GameState> {
       player.slowTimer = 0;
       player.slowPercent = 0;
 
+      // Reset skill active state
+      player.rotActive = false;
+      player.rotCooldown = 0;
+      player.phaseActive = false;
+      player.phaseTimer = 0;
+      player.phaseCooldown = 0;
+      player.dismemberActive = false;
+      player.dismemberTimer = 0;
+      player.dismemberCooldown = 0;
+      player.dismemberTargetId = "";
+
       this.respawnPlayer(player);
     });
 
@@ -271,6 +337,12 @@ export class PudgeRoom extends Room<GameState> {
     player.activeRune = "";
     player.runeTimer = 0;
     player.invisible = false;
+
+    // Clear active skills on respawn
+    player.rotActive = false;
+    player.dismemberActive = false;
+    player.dismemberTimer = 0;
+    player.dismemberTargetId = "";
   }
 
   private releaseHookedTarget(owner: PlayerSchema) {
@@ -311,6 +383,118 @@ export class PudgeRoom extends Room<GameState> {
       if (player.hookCooldown > 0) {
         player.hookCooldown -= dtMs;
         if (player.hookCooldown < 0) player.hookCooldown = 0;
+      }
+
+      // === Skill cooldowns ===
+      if (player.phaseCooldown > 0) {
+        player.phaseCooldown -= dtMs;
+        if (player.phaseCooldown < 0) player.phaseCooldown = 0;
+      }
+      if (player.dismemberCooldown > 0) {
+        player.dismemberCooldown -= dtMs;
+        if (player.dismemberCooldown < 0) player.dismemberCooldown = 0;
+      }
+
+      // === Phase shift timer ===
+      if (player.phaseTimer > 0) {
+        player.phaseTimer -= dtMs;
+        if (player.phaseTimer <= 0) {
+          player.phaseTimer = 0;
+          player.phaseActive = false;
+        }
+      }
+
+      // === Rot AOE damage ===
+      if (player.rotActive && player.hasRot) {
+        // Self-damage
+        player.hp -= ROT_SELF_DAMAGE * dt;
+        // Damage nearby enemies
+        this.state.players.forEach((other, otherId) => {
+          if (otherId === sessionId) return;
+          if (other.team === player.team) return;
+          if (!other.alive) return;
+          // Skip phased players
+          if (other.phaseActive) return;
+          const dist = distance(
+            { x: player.x, y: player.y },
+            { x: other.x, y: other.y }
+          );
+          if (dist < ROT_RADIUS) {
+            other.hp -= ROT_DAMAGE * dt;
+            // Check enemy death from rot
+            if (other.hp <= 0) {
+              other.alive = false;
+              other.hp = 0;
+              other.deaths++;
+              other.respawnTimer = RESPAWN_TIME;
+              player.kills++;
+              this.grantExp(player, EXP_PER_KILL);
+              player.gold += 100;
+              if (player.team === TEAM_LEFT) this.state.leftScore++;
+              else this.state.rightScore++;
+              this.broadcast("kill", {
+                killerName: player.nickname,
+                victimName: other.nickname,
+                killerTeam: player.team,
+              });
+            }
+          }
+        });
+        // Check self-death from rot
+        if (player.hp <= 0) {
+          player.alive = false;
+          player.hp = 0;
+          player.deaths++;
+          player.rotActive = false;
+          player.respawnTimer = RESPAWN_TIME;
+          this.broadcast("kill", {
+            killerName: player.nickname,
+            victimName: player.nickname,
+            killerTeam: player.team,
+            suicide: true,
+          });
+          return;
+        }
+      }
+
+      // === Dismember channel ===
+      if (player.dismemberActive && player.dismemberTimer > 0) {
+        player.dismemberTimer -= dtMs;
+        const target = this.state.players.get(player.dismemberTargetId);
+        if (target && target.alive) {
+          // Lock both players in place (handled by skipping movement when dismembering)
+          target.hp -= DISMEMBER_DAMAGE * dt;
+          if (target.hp <= 0) {
+            target.alive = false;
+            target.hp = 0;
+            target.deaths++;
+            target.respawnTimer = RESPAWN_TIME;
+            player.kills++;
+            this.grantExp(player, EXP_PER_KILL);
+            player.gold += 100;
+            if (player.team === TEAM_LEFT) this.state.leftScore++;
+            else this.state.rightScore++;
+            this.broadcast("kill", {
+              killerName: player.nickname,
+              victimName: target.nickname,
+              killerTeam: player.team,
+            });
+            // End dismember
+            player.dismemberActive = false;
+            player.dismemberTimer = 0;
+            player.dismemberTargetId = "";
+          }
+        } else {
+          // Target died or disconnected, end dismember
+          player.dismemberActive = false;
+          player.dismemberTimer = 0;
+          player.dismemberTargetId = "";
+        }
+        if (player.dismemberTimer <= 0) {
+          player.dismemberActive = false;
+          player.dismemberTimer = 0;
+          player.dismemberTargetId = "";
+        }
       }
 
       // === Process rune effects ===
@@ -367,8 +551,8 @@ export class PudgeRoom extends Room<GameState> {
       player.aimX = input.aimX;
       player.aimY = input.aimY;
 
-      // Move player (only if not being pulled)
-      if (player.hook.state !== "hit" || player.hook.targetId !== sessionId) {
+      // Move player (only if not being pulled or channeling dismember)
+      if ((player.hook.state !== "hit" || player.hook.targetId !== sessionId) && !player.dismemberActive) {
         let speed = this.getEffectiveMoveSpeed(player);
         // Apply slow effect from hook modifier (Lane C)
         if (player.slowTimer > 0 && player.slowPercent > 0) {
@@ -466,6 +650,7 @@ export class PudgeRoom extends Room<GameState> {
           if (otherId === player.id) return;
           if (other.team === player.team) return;
           if (!other.alive) return;
+          if (other.phaseActive) return; // Phased players can't be hooked
 
           if (circleCollision(
             { x: hook.x, y: hook.y }, HOOK_RADIUS,

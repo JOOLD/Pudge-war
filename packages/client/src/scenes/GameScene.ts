@@ -140,10 +140,10 @@ export class GameScene extends Phaser.Scene {
     // Team labels
     this.add.text(MAP_WIDTH / 2 - 60, 18, "🌿", {
       fontSize: "20px",
-    }).setOrigin(1, 0).setDepth(100);
+    }).setOrigin(1, 0).setScrollFactor(0).setDepth(100);
     this.add.text(MAP_WIDTH / 2 + 60, 18, "🌸", {
       fontSize: "20px",
-    }).setOrigin(0, 0).setDepth(100);
+    }).setOrigin(0, 0).setScrollFactor(0).setDepth(100);
 
     // Shop UI (Lane C)
     this.shopUI = new ShopUI((upgradeId: string) => {
@@ -736,7 +736,7 @@ export class GameScene extends Phaser.Scene {
     player.listen("dismemberTimer", (value: number) => {
       spriteData.dismemberTimer = value;
     });
-    player.listen("dismemberTarget", (value: string) => {
+    player.listen("dismemberTargetId", (value: string) => {
       spriteData.dismemberTarget = value;
     });
 

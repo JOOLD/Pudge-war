@@ -45,9 +45,10 @@ export async function createRoom(nickname: string): Promise<Room> {
 
 export async function joinRoom(roomCode: string, nickname: string, ref?: string): Promise<Room> {
   const c = getClient();
-  const opts: Record<string, string> = { nickname };
+  const opts: Record<string, any> = { roomCode, nickname };
   if (ref) opts.ref = ref;
-  const r = await c.joinById(roomCode, opts);
+  // Use join with roomCode filter (not joinById — roomCode is not Colyseus internal ID)
+  const r = await c.join("pudge", opts);
   room = r;
   storeReconnectionToken(r);
   return r;
@@ -123,6 +124,19 @@ export async function attemptReconnect(): Promise<Room | null> {
   return null;
 }
 
+/** Check if room connection is still alive */
+function isConnected(): boolean {
+  if (!room) return false;
+  try {
+    // Colyseus Room has connection.ws (WebSocket instance)
+    const ws = (room as any).connection?.ws;
+    if (ws && ws.readyState !== WebSocket.OPEN) return false;
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export function sendInput(input: {
   dx: number;
   dy: number;
@@ -130,25 +144,25 @@ export function sendInput(input: {
   aimY: number;
   hook: boolean;
 }) {
-  if (room) {
+  if (room && isConnected()) {
     room.send("input", input);
   }
 }
 
 export function sendStart() {
-  if (room) {
+  if (room && isConnected()) {
     room.send("start");
   }
 }
 
 export function sendRestart() {
-  if (room) {
+  if (room && isConnected()) {
     room.send("restart");
   }
 }
 
 export function sendBuy(upgradeId: string) {
-  if (room) {
+  if (room && isConnected()) {
     room.send("buy", { upgradeId });
   }
 }
