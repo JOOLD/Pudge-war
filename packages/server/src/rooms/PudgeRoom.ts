@@ -5,7 +5,9 @@ import {
   TEAM_LEFT, TEAM_RIGHT, PLAYER_MAX_HP, HOOK_COOLDOWN,
   RESPAWN_TIME, HOOK_RADIUS, PLAYER_RADIUS,
   SPAWN_X_LEFT, SPAWN_X_RIGHT, SPAWN_Y_OFFSETS,
-  MAP_HEIGHT,
+  MAP_HEIGHT, HOOK_DAMAGE, HOOK_STUN_DURATION,
+  SPAWN_HEAL_RADIUS, SPAWN_HEAL_RATE,
+  GOLD_PER_KILL, GOLD_PASSIVE_RATE,
 } from "shared";
 import { InputMessage, HookState, GamePhase } from "shared";
 import {
@@ -146,15 +148,26 @@ export class PudgeRoom extends Room<GameState> {
     this.state.rightScore = 0;
     this.state.winningTeam = -1;
 
+    this.state.gameTime = 0;
+
     // Reset all players
     this.state.players.forEach((player) => {
       player.hp = PLAYER_MAX_HP;
       player.alive = true;
       player.kills = 0;
       player.deaths = 0;
+      player.assists = 0;
       player.hookCooldown = 0;
       player.respawnTimer = 0;
       player.hook.state = "idle";
+      player.rotActive = false;
+      player.phaseTimer = 0;
+      player.phaseCooldown = 0;
+      player.dismemberTimer = 0;
+      player.dismemberTarget = "";
+      player.dismemberCooldown = 0;
+      player.stunTimer = 0;
+      player.gold = 0;
       this.respawnPlayer(player);
     });
 
@@ -189,26 +202,59 @@ export class PudgeRoom extends Room<GameState> {
     }
   }
 
+  private getSpawnX(player: PlayerSchema): number {
+    return player.team === TEAM_LEFT ? SPAWN_X_LEFT : SPAWN_X_RIGHT;
+  }
+
+  private getSpawnY(player: PlayerSchema): number {
+    const yCenter = MAP_HEIGHT / 2;
+    const yOffset = SPAWN_Y_OFFSETS[player.spawnIndex] || 0;
+    return yCenter + yOffset;
+  }
+
   private gameLoop() {
     if (this.state.phase !== GamePhase.PLAYING) return;
 
     const dt = 1 / TICK_RATE;
+    const dtMs = 1000 / TICK_RATE;
+
+    // Track game time
+    this.state.gameTime += dtMs;
 
     this.state.players.forEach((player, sessionId) => {
       // Handle respawn timer
       if (!player.alive) {
-        player.respawnTimer -= (1000 / TICK_RATE);
+        player.respawnTimer -= dtMs;
         if (player.respawnTimer <= 0) {
           this.respawnPlayer(player);
         }
         return;
       }
 
+      // Handle stun timer
+      if (player.stunTimer > 0) {
+        player.stunTimer -= dtMs;
+        if (player.stunTimer < 0) player.stunTimer = 0;
+      }
+
       // Handle cooldown
       if (player.hookCooldown > 0) {
-        player.hookCooldown -= (1000 / TICK_RATE);
+        player.hookCooldown -= dtMs;
         if (player.hookCooldown < 0) player.hookCooldown = 0;
       }
+
+      // Spawn healing: if within SPAWN_HEAL_RADIUS of own spawn, heal
+      const spawnX = this.getSpawnX(player);
+      const spawnY = this.getSpawnY(player);
+      const dxSpawn = player.x - spawnX;
+      const dySpawn = player.y - spawnY;
+      const distToSpawn = Math.sqrt(dxSpawn * dxSpawn + dySpawn * dySpawn);
+      if (distToSpawn < SPAWN_HEAL_RADIUS) {
+        player.hp = Math.min(PLAYER_MAX_HP, player.hp + SPAWN_HEAL_RATE * dt);
+      }
+
+      // Passive gold income
+      player.gold += GOLD_PASSIVE_RATE * dt;
 
       const input = this.playerInputs.get(sessionId);
       if (!input) return;
@@ -217,8 +263,9 @@ export class PudgeRoom extends Room<GameState> {
       player.aimX = input.aimX;
       player.aimY = input.aimY;
 
-      // Move player (only if not being pulled)
-      if (player.hook.state !== "hit" || player.hook.targetId !== sessionId) {
+      // Move player (only if not being pulled and not stunned)
+      const isBeingPulled = this.isPlayerBeingPulled(sessionId);
+      if (!isBeingPulled && player.stunTimer <= 0) {
         const pos = movePlayer(player.x, player.y, input.dx, input.dy, player.team, dt);
         player.x = pos.x;
         player.y = pos.y;
@@ -248,6 +295,16 @@ export class PudgeRoom extends Room<GameState> {
       });
       logEvent({ type: 'game_end', sessionId: 'room', payload: { winningTeam: TEAM_RIGHT, leftScore: this.state.leftScore, rightScore: this.state.rightScore, roomCode: this.state.roomCode } });
     }
+  }
+
+  private isPlayerBeingPulled(sessionId: string): boolean {
+    let beingPulled = false;
+    this.state.players.forEach((other) => {
+      if (other.hook.state === "hit" && other.hook.targetId === sessionId) {
+        beingPulled = true;
+      }
+    });
+    return beingPulled;
   }
 
   private updateHook(player: PlayerSchema, input: InputMessage, dt: number) {
@@ -325,30 +382,37 @@ export class PudgeRoom extends Room<GameState> {
         hook.y = target.y;
 
         if (pullResult.arrived) {
-          // Kill the target
-          target.alive = false;
-          target.hp = 0;
-          target.deaths++;
-          target.respawnTimer = RESPAWN_TIME;
-          player.kills++;
-
-          // Update score
-          if (player.team === TEAM_LEFT) {
-            this.state.leftScore++;
-          } else {
-            this.state.rightScore++;
-          }
+          // Apply hook damage and stun
+          target.hp -= HOOK_DAMAGE;
+          target.stunTimer = HOOK_STUN_DURATION;
 
           hook.state = "idle";
           hook.targetId = "";
 
-          this.broadcast("kill", {
-            killerName: player.nickname,
-            victimName: target.nickname,
-            killerTeam: player.team,
-          });
+          // Kill if HP depleted
+          if (target.hp <= 0) {
+            target.alive = false;
+            target.hp = 0;
+            target.deaths++;
+            target.respawnTimer = RESPAWN_TIME;
+            player.kills++;
+            player.gold += GOLD_PER_KILL;
 
-          logEvent({ type: 'kill', sessionId: player.id, payload: { killer: player.nickname, victim: target.nickname, killerTeam: player.team } });
+            // Update score
+            if (player.team === TEAM_LEFT) {
+              this.state.leftScore++;
+            } else {
+              this.state.rightScore++;
+            }
+
+            this.broadcast("kill", {
+              killerName: player.nickname,
+              victimName: target.nickname,
+              killerTeam: player.team,
+            });
+
+            logEvent({ type: 'kill', sessionId: player.id, payload: { killer: player.nickname, victim: target.nickname, killerTeam: player.team } });
+          }
         }
         break;
       }
