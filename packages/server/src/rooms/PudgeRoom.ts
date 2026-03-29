@@ -12,7 +12,7 @@ import {
 import { InputMessage, HookState, GamePhase } from "shared";
 import {
   movePlayer, moveHook, pullTarget, returnHook,
-  circleCollision, normalize,
+  circleCollision, normalize, hookObstacleCollision,
 } from "../physics/collision";
 import { logEvent } from "../analytics";
 
@@ -374,6 +374,17 @@ export class PudgeRoom extends Room<GameState> {
         // Check out of range
         if (result.outOfRange) {
           hook.state = "returning";
+          break;
+        }
+
+        // Check obstacle collision
+        const hitObstacle = hookObstacleCollision(hook.x, hook.y, HOOK_RADIUS);
+        if (hitObstacle) {
+          hook.state = "returning";
+          this.broadcast("hookBlocked", {
+            x: hook.x, y: hook.y,
+            obstacleType: hitObstacle.type,
+          });
           break;
         }
 
