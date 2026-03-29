@@ -206,7 +206,268 @@
       to { opacity: 1; transform: translateX(0); }
     }
 
-    /* Game over overlay */
+    /* === HUD === */
+    #hud {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      pointer-events: none;
+      z-index: 6;
+    }
+
+    #hud-timer {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      font-family: 'Nunito', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #fff;
+      text-shadow: 2px 2px 0 #333;
+    }
+
+    #hud-gold {
+      position: absolute;
+      bottom: 16px;
+      left: 16px;
+      font-family: 'Nunito', sans-serif;
+      font-size: 20px;
+      font-weight: 700;
+      color: #ffd93d;
+      text-shadow: 2px 2px 0 #8b6914;
+      transition: transform 0.15s ease;
+    }
+    #hud-gold.bounce {
+      transform: scale(1.2);
+    }
+
+    #hud-gold-delta {
+      position: absolute;
+      bottom: 44px;
+      left: 20px;
+      font-family: 'Nunito', sans-serif;
+      font-size: 16px;
+      font-weight: 700;
+      color: #a8d98a;
+      opacity: 0;
+      pointer-events: none;
+    }
+    #hud-gold-delta.animate {
+      animation: goldDeltaFloat 1.2s ease-out forwards;
+    }
+    @keyframes goldDeltaFloat {
+      0% { opacity: 1; transform: translateY(0); }
+      70% { opacity: 1; transform: translateY(-24px); }
+      100% { opacity: 0; transform: translateY(-36px); }
+    }
+
+    #hud-kill-streak {
+      position: absolute;
+      top: 40%;
+      left: 50%;
+      transform: translate(-50%, -50%);
+      font-family: 'Nunito', sans-serif;
+      font-size: 36px;
+      font-weight: 900;
+      color: #ffd93d;
+      text-shadow: 3px 3px 0 #8b6914, 0 0 20px rgba(255,217,61,0.5);
+      opacity: 0;
+      pointer-events: none;
+      white-space: nowrap;
+    }
+    #hud-kill-streak.animate {
+      animation: streakPop 2.5s ease-out forwards;
+    }
+    @keyframes streakPop {
+      0% { opacity: 0; transform: translate(-50%, -50%) scale(0.3); }
+      15% { opacity: 1; transform: translate(-50%, -50%) scale(1.15); }
+      25% { transform: translate(-50%, -50%) scale(1); }
+      75% { opacity: 1; }
+      100% { opacity: 0; transform: translate(-50%, -50%) scale(1.05); }
+    }
+
+    #hud-shop-btn {
+      position: absolute;
+      bottom: 16px;
+      right: 16px;
+      font-family: 'Nunito', sans-serif;
+      font-size: 14px;
+      font-weight: 700;
+      padding: 8px 16px;
+      border-radius: 10px;
+      border: 2px solid #5a9a3a;
+      cursor: pointer;
+      pointer-events: auto;
+      user-select: none;
+      transition: background 0.2s, opacity 0.2s;
+    }
+    #hud-shop-btn.enabled {
+      background: #7ecfb0;
+      color: #2a5a4a;
+      border-color: #5a9a3a;
+    }
+    #hud-shop-btn.disabled {
+      background: #666;
+      color: #aaa;
+      border-color: #555;
+      opacity: 0.7;
+    }
+
+    /* === Death overlay === */
+    #death-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.4);
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      z-index: 8;
+    }
+    #death-overlay.visible { display: flex; }
+    #death-text {
+      font-family: 'Nunito', sans-serif;
+      font-size: 36px;
+      font-weight: 900;
+      color: #fff;
+      text-shadow: 3px 3px 0 #333;
+    }
+
+    canvas.death-grayscale {
+      filter: grayscale(0.8) brightness(0.7);
+      transition: filter 0.3s;
+    }
+
+    /* === Shop overlay === */
+    #shop-overlay {
+      position: absolute;
+      top: 0; left: 0; right: 0; bottom: 0;
+      background: rgba(0,0,0,0.6);
+      display: none;
+      align-items: center;
+      justify-content: center;
+      z-index: 15;
+    }
+    #shop-overlay.visible { display: flex; }
+    #shop-overlay.hidden { display: none; }
+
+    .shop-panel {
+      background: rgba(45, 60, 39, 0.97);
+      border: 3px solid #ffd93d;
+      border-radius: 16px;
+      padding: 20px 28px;
+      min-width: 420px;
+      max-width: 520px;
+      max-height: 80vh;
+      overflow-y: auto;
+      box-shadow: 0 8px 32px rgba(0,0,0,0.5);
+    }
+
+    .shop-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 16px;
+      gap: 16px;
+    }
+    .shop-header h2 {
+      font-family: 'Nunito', sans-serif;
+      font-size: 24px;
+      color: #ffd93d;
+      margin: 0;
+    }
+    .shop-gold {
+      font-family: 'Nunito', sans-serif;
+      font-size: 18px;
+      color: #ffd93d;
+      font-weight: 700;
+    }
+    .shop-close {
+      background: none;
+      border: 2px solid #888;
+      color: #ccc;
+      font-size: 18px;
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: border-color 0.2s, color 0.2s;
+    }
+    .shop-close:hover {
+      border-color: #ff6b6b;
+      color: #ff6b6b;
+    }
+
+    .shop-grid {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .shop-category h3 {
+      font-family: 'Nunito', sans-serif;
+      font-size: 16px;
+      color: #a8d98a;
+      margin-bottom: 8px;
+      border-bottom: 1px solid rgba(168,217,138,0.3);
+      padding-bottom: 4px;
+    }
+
+    .shop-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 6px 8px;
+      border-radius: 8px;
+      gap: 8px;
+    }
+    .shop-item:hover {
+      background: rgba(255,255,255,0.05);
+    }
+    .item-name {
+      color: #fff;
+      font-size: 14px;
+      font-weight: 600;
+      flex: 1;
+    }
+    .item-level {
+      color: #a8d98a;
+      font-size: 13px;
+      min-width: 55px;
+      text-align: center;
+    }
+    .buy-btn {
+      font-family: 'Nunito', sans-serif;
+      font-size: 13px;
+      font-weight: 700;
+      padding: 4px 12px;
+      border-radius: 8px;
+      border: 2px solid #e6c235;
+      background: #ffd93d;
+      color: #5a3a00;
+      cursor: pointer;
+      min-width: 80px;
+      transition: transform 0.1s, opacity 0.2s;
+    }
+    .buy-btn:hover:not(:disabled) { transform: scale(1.05); }
+    .buy-btn:active:not(:disabled) { transform: scale(0.95); }
+    .buy-btn:disabled {
+      cursor: default;
+    }
+    .buy-btn.cant-afford {
+      background: #666;
+      color: #aaa;
+      border-color: #555;
+    }
+    .buy-btn.maxed {
+      background: #5a9a3a;
+      color: #fff;
+      border-color: #4a8a2a;
+    }
+
+    /* === Game over overlay (upgraded) === */
     #game-over {
       position: absolute;
       top: 0; left: 0; right: 0; bottom: 0;
@@ -227,6 +488,54 @@
       font-size: 20px; padding: 12px 48px; border-radius: 12px;
       border: 3px solid #e6c235; background: #ffd93d; color: #5a3a00;
       font-weight: 700; cursor: pointer; margin-top: 8px;
+    }
+
+    /* Scoreboard */
+    #scoreboard {
+      width: 90%;
+      max-width: 500px;
+      margin: 8px auto;
+      font-family: 'Nunito', sans-serif;
+    }
+    .scoreboard-header {
+      display: flex;
+      padding: 6px 12px;
+      font-size: 13px;
+      font-weight: 700;
+      color: #a8d98a;
+      border-bottom: 2px solid rgba(168,217,138,0.4);
+    }
+    .scoreboard-header span:first-child { flex: 2; }
+    .scoreboard-header span { flex: 1; text-align: center; }
+
+    #scoreboard-rows {
+      display: flex;
+      flex-direction: column;
+    }
+    .scoreboard-row {
+      display: flex;
+      padding: 5px 12px;
+      font-size: 14px;
+      color: #fff;
+      border-bottom: 1px solid rgba(255,255,255,0.1);
+      align-items: center;
+    }
+    .scoreboard-row span:first-child { flex: 2; text-align: left; }
+    .scoreboard-row span { flex: 1; text-align: center; }
+    .scoreboard-row.team-left { border-left: 3px solid #7ecfb0; }
+    .scoreboard-row.team-right { border-left: 3px solid #f6a6b2; }
+    .scoreboard-row.mvp-row {
+      background: rgba(255,217,61,0.15);
+      border-left: 3px solid #ffd93d;
+    }
+
+    #mvp-display {
+      font-family: 'Nunito', sans-serif;
+      font-size: 20px;
+      font-weight: 900;
+      color: #ffd93d;
+      text-shadow: 2px 2px 0 #8b6914;
+      margin-top: 4px;
     }
   </style>
 </head>
@@ -266,10 +575,45 @@
     <!-- Kill feed -->
     <div id="kill-feed"></div>
 
+    <!-- HUD elements -->
+    <div id="hud" style="display:none">
+      <div id="hud-timer">⏱ 0:00</div>
+      <div id="hud-gold">💰 0</div>
+      <div id="hud-gold-delta"></div>
+      <div id="hud-kill-streak"></div>
+      <div id="hud-shop-btn" class="disabled">🛒 商店 (B)</div>
+    </div>
+
+    <!-- Death overlay -->
+    <div id="death-overlay">
+      <div id="death-text">復活中... 3</div>
+    </div>
+
+    <!-- Shop overlay -->
+    <div id="shop-overlay" class="hidden">
+      <div class="shop-panel">
+        <div class="shop-header">
+          <h2>🛒 商店</h2>
+          <span class="shop-gold">💰 <span id="shop-gold-amount">0</span></span>
+          <button class="shop-close">✕</button>
+        </div>
+        <div class="shop-grid">
+          <!-- Populated by ShopUI.ts -->
+        </div>
+      </div>
+    </div>
+
     <!-- Game over -->
     <div id="game-over">
       <h1 id="winner-text"></h1>
       <div class="score" id="final-score"></div>
+      <div id="scoreboard">
+        <div class="scoreboard-header">
+          <span>玩家</span><span>K</span><span>D</span><span>A</span><span>💰</span>
+        </div>
+        <div id="scoreboard-rows"></div>
+      </div>
+      <div id="mvp-display"></div>
       <button id="btn-restart">再來一局！</button>
     </div>
   </div>
