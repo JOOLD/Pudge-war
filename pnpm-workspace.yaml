@@ -1,6 +1,5 @@
 packages:
   - "packages/*"
 allowBuilds:
-  esbuild: false
-  msgpackr-extract: false
   esbuild: true
+  msgpackr-extract: false
