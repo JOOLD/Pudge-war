@@ -2,6 +2,8 @@ import Phaser from "phaser";
 import { Room } from "colyseus.js";
 import { getRoom, sendInput } from "../network/client";
 import { generateAssets } from "./AssetGenerator";
+import { SoundManager } from "../audio/SoundManager";
+import { TouchControls } from "../controls/TouchControls";
 import {
   COLORS, MAP_WIDTH, MAP_HEIGHT, PLAYER_RADIUS,
   HOOK_COOLDOWN, TEAM_LEFT, TEAM_RIGHT,
@@ -22,6 +24,9 @@ interface PlayerSprite {
   targetY: number;
   serverAlive: boolean;
   serverTeam: number;
+  // For sound triggers
+  prevHookState: string;
+  prevAlive: boolean;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -38,6 +43,8 @@ export class GameScene extends Phaser.Scene {
   private mouseWorldY: number = 0;
   private wantHook: boolean = false;
   private scoreText!: Phaser.GameObjects.Text;
+  private soundManager!: SoundManager;
+  private touchControls: TouchControls | null = null;
 
   constructor() {
     super({ key: "GameScene" });
@@ -51,6 +58,9 @@ export class GameScene extends Phaser.Scene {
 
     // Generate all assets
     generateAssets(this);
+
+    // Initialize sound manager
+    this.soundManager = new SoundManager();
 
     // Draw map
     this.add.image(MAP_WIDTH / 2, MAP_HEIGHT / 2, "map");
@@ -76,27 +86,42 @@ export class GameScene extends Phaser.Scene {
       fontSize: "20px",
     }).setOrigin(0, 0).setDepth(100);
 
-    // Input
-    if (this.input.keyboard) {
-      this.keys = {
-        W: this.input.keyboard.addKey("W"),
-        A: this.input.keyboard.addKey("A"),
-        S: this.input.keyboard.addKey("S"),
-        D: this.input.keyboard.addKey("D"),
-      };
+    // --- Input setup: touch or keyboard ---
+    if (TouchControls.isMobile()) {
+      this.touchControls = new TouchControls(this);
+      this.touchControls.setup();
+    } else {
+      // Keyboard input (desktop)
+      if (this.input.keyboard) {
+        this.keys = {
+          W: this.input.keyboard.addKey("W"),
+          A: this.input.keyboard.addKey("A"),
+          S: this.input.keyboard.addKey("S"),
+          D: this.input.keyboard.addKey("D"),
+        };
+      }
+
+      // Mouse
+      this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
+        this.mouseWorldX = pointer.worldX;
+        this.mouseWorldY = pointer.worldY;
+      });
+
+      this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
+        // Resume audio on first user interaction
+        this.soundManager.tryResume();
+        if (pointer.leftButtonDown()) {
+          this.wantHook = true;
+        }
+      });
     }
 
-    // Mouse
-    this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
-      this.mouseWorldX = pointer.worldX;
-      this.mouseWorldY = pointer.worldY;
-    });
-
-    this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-      if (pointer.leftButtonDown()) {
-        this.wantHook = true;
-      }
-    });
+    // Resume audio on any touch (for mobile)
+    if (this.touchControls) {
+      this.input.on("pointerdown", () => {
+        this.soundManager.tryResume();
+      });
+    }
 
     // Listen for state changes
     this.room.state.players.onAdd((player: any, key: string) => {
@@ -107,15 +132,27 @@ export class GameScene extends Phaser.Scene {
       this.removePlayer(key);
     });
 
-    // Kill feed
+    // Kill feed + effects
     this.room.onMessage("kill", (data: any) => {
       this.showKillFeed(data.killerName, data.victimName, data.killerTeam);
+      this.soundManager.playKill();
+
+      // Find victim position for celebration effect
+      this.players.forEach((sprite) => {
+        // Match by nickname — victimName is what the server sends
+        if (sprite.nameText.text === data.victimName) {
+          this.spawnKillEffect(sprite.container.x, sprite.container.y);
+        }
+      });
+
+      // Subtle screen flash on kill
+      this.showKillFlash();
     });
 
     // Hook hit notification
     this.room.onMessage("hookHit", (data: any) => {
-      // Play hook hit effect
       this.cameras.main.shake(100, 0.005);
+      this.soundManager.playHookHit();
     });
 
     // Game over is handled by main.ts DOM centralization
@@ -124,22 +161,33 @@ export class GameScene extends Phaser.Scene {
   update(_time: number, delta: number) {
     if (!this.room) return;
 
-    // Send input to server
+    // Read input from touch controls or keyboard
     let dx = 0, dy = 0;
-    if (this.keys) {
-      if (this.keys.A.isDown) dx -= 1;
-      if (this.keys.D.isDown) dx += 1;
-      if (this.keys.W.isDown) dy -= 1;
-      if (this.keys.S.isDown) dy += 1;
+    let aimX = this.mouseWorldX;
+    let aimY = this.mouseWorldY;
+    let hook = false;
+
+    if (this.touchControls) {
+      this.touchControls.update();
+      dx = this.touchControls.dx;
+      dy = this.touchControls.dy;
+      aimX = this.touchControls.aimX;
+      aimY = this.touchControls.aimY;
+      hook = this.touchControls.wantHook;
+      // One-shot: reset after reading
+      if (hook) this.touchControls.wantHook = false;
+    } else {
+      if (this.keys) {
+        if (this.keys.A.isDown) dx -= 1;
+        if (this.keys.D.isDown) dx += 1;
+        if (this.keys.W.isDown) dy -= 1;
+        if (this.keys.S.isDown) dy += 1;
+      }
+      hook = this.wantHook;
+      this.wantHook = false;
     }
 
-    sendInput({
-      dx, dy,
-      aimX: this.mouseWorldX,
-      aimY: this.mouseWorldY,
-      hook: this.wantHook,
-    });
-    this.wantHook = false;
+    sendInput({ dx, dy, aimX, aimY, hook });
 
     // Update score
     this.scoreText.setText(
@@ -227,6 +275,8 @@ export class GameScene extends Phaser.Scene {
       targetY: player.y,
       serverAlive: player.alive,
       serverTeam: player.team,
+      prevHookState: "idle",
+      prevAlive: player.alive,
     };
 
     this.players.set(sessionId, spriteData);
@@ -234,7 +284,15 @@ export class GameScene extends Phaser.Scene {
     // Listen for changes
     player.listen("x", (value: number) => { spriteData.targetX = value; });
     player.listen("y", (value: number) => { spriteData.targetY = value; });
-    player.listen("alive", (value: boolean) => { spriteData.serverAlive = value; });
+    player.listen("alive", (value: boolean) => {
+      const wasAlive = spriteData.serverAlive;
+      spriteData.serverAlive = value;
+
+      // Respawn sound: dead -> alive, only for local player
+      if (!wasAlive && value && sessionId === this.myId) {
+        this.soundManager.playRespawn();
+      }
+    });
 
     player.listen("hp", (value: number) => {
       const pct = value / 100;
@@ -254,11 +312,18 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    // Hook state rendering
+    // Hook state rendering + sound trigger
     const hookSchema = player.hook;
     const updateHook = () => {
       spriteData.hookChainGfx.clear();
       const state = hookSchema.state;
+
+      // Hook throw sound: idle -> flying, only for local player
+      if (sessionId === this.myId &&
+          spriteData.prevHookState === "idle" && state === "flying") {
+        this.soundManager.playHookThrow();
+      }
+      spriteData.prevHookState = state;
 
       if (state === "idle") return;
 
@@ -299,8 +364,12 @@ export class GameScene extends Phaser.Scene {
         if (!spriteData.serverAlive) return;
         if (hookSchema.state !== "idle") return;
 
-        const dx = this.mouseWorldX - spriteData.container.x;
-        const dy = this.mouseWorldY - spriteData.container.y;
+        // For touch controls, use aimX/aimY; for desktop, use mouseWorldX/Y
+        const targetX = this.touchControls ? this.touchControls.aimX : this.mouseWorldX;
+        const targetY = this.touchControls ? this.touchControls.aimY : this.mouseWorldY;
+
+        const dx = targetX - spriteData.container.x;
+        const dy = targetY - spriteData.container.y;
         const len = Math.sqrt(dx * dx + dy * dy);
         if (len === 0) return;
 
@@ -348,5 +417,67 @@ export class GameScene extends Phaser.Scene {
     while (feed.children.length > 5) {
       feed.removeChild(feed.children[0]);
     }
+  }
+
+  /** Particle burst at kill location using existing textures */
+  private spawnKillEffect(worldX: number, worldY: number) {
+    // Star burst particles
+    for (let i = 0; i < 8; i++) {
+      const angle = (Math.PI * 2 / 8) * i;
+      const speed = 80 + Math.random() * 60;
+      const star = this.add.image(worldX, worldY, "particle-star")
+        .setDepth(50)
+        .setScale(0.5 + Math.random() * 0.5)
+        .setAlpha(1);
+
+      this.tweens.add({
+        targets: star,
+        x: worldX + Math.cos(angle) * speed,
+        y: worldY + Math.sin(angle) * speed,
+        alpha: 0,
+        scale: 0,
+        duration: 400 + Math.random() * 200,
+        ease: "Power2",
+        onComplete: () => star.destroy(),
+      });
+    }
+
+    // Poof cloud particles
+    for (let i = 0; i < 5; i++) {
+      const ox = (Math.random() - 0.5) * 30;
+      const oy = (Math.random() - 0.5) * 30;
+      const poof = this.add.image(worldX + ox, worldY + oy, "particle-poof")
+        .setDepth(49)
+        .setScale(0.8 + Math.random() * 0.8)
+        .setAlpha(0.7);
+
+      this.tweens.add({
+        targets: poof,
+        y: worldY + oy - 20 - Math.random() * 20,
+        alpha: 0,
+        scale: 2,
+        duration: 500 + Math.random() * 200,
+        ease: "Power1",
+        onComplete: () => poof.destroy(),
+      });
+    }
+  }
+
+  /** Brief white flash overlay on kill (50ms, very subtle) */
+  private showKillFlash() {
+    const cam = this.cameras.main;
+    const flash = this.add.rectangle(
+      cam.scrollX + cam.width / 2,
+      cam.scrollY + cam.height / 2,
+      cam.width, cam.height,
+      0xffffff, 0.1,
+    ).setScrollFactor(0).setDepth(150);
+
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      duration: 50,
+      onComplete: () => flash.destroy(),
+    });
   }
 }
