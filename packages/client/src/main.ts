@@ -318,6 +318,27 @@ roomCodeInput.addEventListener("input", () => {
   roomCodeInput.value = roomCodeInput.value.toUpperCase();
 });
 
+// === Tutorial overlay ===
+const tutorialOverlay = document.getElementById("tutorial-overlay")!;
+const btnTutorialClose = document.getElementById("btn-tutorial-close")!;
+const btnHelp = document.getElementById("btn-help")!;
+
+// Show tutorial on first visit
+const tutorialShown = localStorage.getItem("pudge-tutorial-shown");
+if (!tutorialShown) {
+  tutorialOverlay.classList.add("visible");
+}
+
+btnTutorialClose.addEventListener("click", () => {
+  tutorialOverlay.classList.remove("visible");
+  localStorage.setItem("pudge-tutorial-shown", "true");
+});
+
+// Help button in waiting room re-shows tutorial
+btnHelp.addEventListener("click", () => {
+  tutorialOverlay.classList.add("visible");
+});
+
 // === HUD & Shop wiring ===
 let hud: HUD | null = null;
 let shopUI: ShopUI | null = null;

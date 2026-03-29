@@ -31,6 +31,7 @@ interface PlayerSprite {
   rotGfx: Phaser.GameObjects.Graphics;
   phaseGfx: Phaser.GameObjects.Graphics;
   dismemberGfx: Phaser.GameObjects.Graphics;
+  hookRangeGfx: Phaser.GameObjects.Graphics;
   // For interpolation
   targetX: number;
   targetY: number;
@@ -56,10 +57,10 @@ export class GameScene extends Phaser.Scene {
     D: Phaser.Input.Keyboard.Key;
   };
   private skillKeys!: {
-    Q: Phaser.Input.Keyboard.Key;
-    W: Phaser.Input.Keyboard.Key;
-    E: Phaser.Input.Keyboard.Key;
-    R: Phaser.Input.Keyboard.Key;
+    KEY1: Phaser.Input.Keyboard.Key;
+    KEY2: Phaser.Input.Keyboard.Key;
+    KEY3: Phaser.Input.Keyboard.Key;
+    KEY4: Phaser.Input.Keyboard.Key;
   };
   private myId: string = "";
   private mouseWorldX: number = 0;
@@ -134,6 +135,9 @@ export class GameScene extends Phaser.Scene {
     if (TouchControls.isMobile()) {
       this.touchControls = new TouchControls(this);
       this.touchControls.setup();
+      this.touchControls.onSkill((skillId) => {
+        this.room.send("skill", { skill: skillId });
+      });
     } else {
       // Keyboard input (desktop)
       if (this.input.keyboard) {
@@ -144,10 +148,10 @@ export class GameScene extends Phaser.Scene {
           D: this.input.keyboard.addKey("D"),
         };
         this.skillKeys = {
-          Q: this.input.keyboard.addKey("Q"),
-          W: this.input.keyboard.addKey("W"), // shared with movement W
-          E: this.input.keyboard.addKey("E"),
-          R: this.input.keyboard.addKey("R"),
+          KEY1: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
+          KEY2: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
+          KEY3: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE),
+          KEY4: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR),
         };
       }
 
@@ -276,19 +280,17 @@ export class GameScene extends Phaser.Scene {
 
     // Skill key presses (desktop only, not when dead)
     if (this.skillKeys && !this.localPlayerDead) {
-      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.Q)) {
+      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.KEY1)) {
         this.wantHook = true;
       }
-      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.E)) {
+      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.KEY2)) {
+        this.room.send("skill", { skill: "rot" });
+      }
+      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.KEY3)) {
         this.room.send("skill", { skill: "phase" });
       }
-      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.R)) {
+      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.KEY4)) {
         this.room.send("skill", { skill: "dismember" });
-      }
-      // W is shared with movement — JustDown toggles rot AND moves up.
-      // This is intentional: pressing W toggles rot + moves up simultaneously.
-      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.W)) {
-        this.room.send("skill", { skill: "rot" });
       }
     }
 
@@ -337,6 +339,20 @@ export class GameScene extends Phaser.Scene {
         }
       }
     });
+
+    // Draw range indicators for local player
+    const mySprite = this.players.get(this.myId);
+    if (mySprite && mySprite.serverAlive) {
+      mySprite.hookRangeGfx.clear();
+      const myState = this.room.state.players.get(this.myId) as any;
+      if (myState && myState.hookCooldown <= 0) {
+        // Hook range circle (subtle)
+        mySprite.hookRangeGfx.lineStyle(1, 0xffffff, 0.08);
+        mySprite.hookRangeGfx.strokeCircle(0, 0, 500);
+      }
+    } else if (mySprite) {
+      mySprite.hookRangeGfx.clear();
+    }
 
     // Update all player sprites with interpolation
     this.players.forEach((sprite, id) => {
@@ -432,10 +448,11 @@ export class GameScene extends Phaser.Scene {
     const rotGfx = this.add.graphics();
     const phaseGfx = this.add.graphics();
     const dismemberGfx = this.add.graphics();
+    const hookRangeGfx = this.add.graphics();
 
     // Container
     const container = this.add.container(player.x, player.y, [
-      rotGfx, hookChainGfx, aimLine, body, nameText, hpBarBg, hpBarFill, hpText, cooldownArc, phaseGfx, dismemberGfx,
+      hookRangeGfx, rotGfx, hookChainGfx, aimLine, body, nameText, hpBarBg, hpBarFill, hpText, cooldownArc, phaseGfx, dismemberGfx,
     ]);
     container.setDepth(10);
 
@@ -453,6 +470,7 @@ export class GameScene extends Phaser.Scene {
       rotGfx,
       phaseGfx,
       dismemberGfx,
+      hookRangeGfx,
       targetX: player.x,
       targetY: player.y,
       serverAlive: player.alive,

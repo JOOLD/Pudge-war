@@ -17,6 +17,8 @@ export class TouchControls {
   private joystickActive: boolean = false;
   private joystickCenter: { x: number; y: number } = { x: 0, y: 0 };
   private joystickPointerId: number = -1;
+  private skillButtons: HTMLDivElement[] = [];
+  private onSkillCallback: ((skillId: string) => void) | null = null;
 
   private static readonly JOYSTICK_ZONE = 0.3; // left 30% of screen
   private static readonly JOYSTICK_RADIUS = 50; // max thumb offset
@@ -44,6 +46,11 @@ export class TouchControls {
     return "ontouchstart" in window || navigator.maxTouchPoints > 0;
   }
 
+  /** Register callback for mobile skill button presses */
+  public onSkill(callback: (skillId: string) => void): void {
+    this.onSkillCallback = callback;
+  }
+
   /** Call in scene.create() to wire up input handlers */
   setup(): void {
     // Enable multi-touch (default is 1 pointer)
@@ -52,6 +59,9 @@ export class TouchControls {
     this.scene.input.on("pointerdown", this.onPointerDown, this);
     this.scene.input.on("pointermove", this.onPointerMove, this);
     this.scene.input.on("pointerup", this.onPointerUp, this);
+
+    // Create mobile skill buttons
+    this.createSkillButtons();
   }
 
   /** Call in scene.update() — currently a no-op but available for future use */
@@ -66,6 +76,10 @@ export class TouchControls {
 
     this.joystickBase.destroy();
     this.joystickThumb.destroy();
+
+    // Clean up mobile skill buttons
+    const mobileSkills = document.getElementById('mobile-skills');
+    if (mobileSkills) mobileSkills.remove();
   }
 
   // --- Private event handlers ---
@@ -87,18 +101,25 @@ export class TouchControls {
         this.joystickThumb.setVisible(true);
       }
     } else {
-      // Right zone — hook trigger
+      // Right zone — update aim direction only (hook fires via skill button)
       const cam = this.scene.cameras.main;
       const worldPoint = cam.getWorldPoint(pointer.x, pointer.y);
       this.aimX = worldPoint.x;
       this.aimY = worldPoint.y;
-      this.wantHook = true;
     }
   }
 
   private onPointerMove(pointer: Phaser.Input.Pointer): void {
+    // Update aim if this is a right-side (non-joystick) pointer
+    if (pointer.id !== this.joystickPointerId) {
+      const cam = this.scene.cameras.main;
+      const worldPoint = cam.getWorldPoint(pointer.x, pointer.y);
+      this.aimX = worldPoint.x;
+      this.aimY = worldPoint.y;
+      return;
+    }
+
     if (!this.joystickActive) return;
-    if (pointer.id !== this.joystickPointerId) return;
 
     const offsetX = pointer.x - this.joystickCenter.x;
     const offsetY = pointer.y - this.joystickCenter.y;
@@ -134,6 +155,73 @@ export class TouchControls {
       this.joystickBase.setVisible(false);
       this.joystickThumb.setVisible(false);
     }
+  }
+
+  // --- Mobile skill buttons ---
+
+  private createSkillButtons(): void {
+    const container = document.createElement('div');
+    container.id = 'mobile-skills';
+    container.style.cssText = `
+      position: absolute;
+      right: 12px;
+      top: 50%;
+      transform: translateY(-50%);
+      display: grid;
+      grid-template-columns: 48px 48px;
+      gap: 8px;
+      z-index: 60;
+      pointer-events: auto;
+    `;
+
+    const skills = [
+      { id: 'hook', icon: '\u{1FA9D}', label: '1' },
+      { id: 'rot', icon: '\u2620\uFE0F', label: '2' },
+      { id: 'phase', icon: '\u2728', label: '3' },
+      { id: 'dismember', icon: '\u{1F52A}', label: '4' },
+    ];
+
+    skills.forEach(skill => {
+      const btn = document.createElement('div');
+      btn.className = 'mobile-skill-btn';
+      btn.dataset.skillId = skill.id;
+      btn.innerHTML = `<span class="skill-icon">${skill.icon}</span>`;
+      btn.style.cssText = `
+        width: 48px; height: 48px;
+        background: rgba(0,0,0,0.5);
+        backdrop-filter: blur(4px);
+        border: 2px solid rgba(255,217,61,0.3);
+        border-radius: 12px;
+        display: flex; align-items: center; justify-content: center;
+        font-size: 20px;
+        touch-action: manipulation;
+        user-select: none;
+        -webkit-user-select: none;
+      `;
+
+      btn.addEventListener('touchstart', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        btn.style.transform = 'scale(0.9)';
+        btn.style.borderColor = 'rgba(255,217,61,0.8)';
+        if (skill.id === 'hook') {
+          this.wantHook = true;
+        } else if (this.onSkillCallback) {
+          this.onSkillCallback(skill.id);
+        }
+      });
+
+      btn.addEventListener('touchend', (e) => {
+        e.preventDefault();
+        btn.style.transform = 'scale(1)';
+        btn.style.borderColor = 'rgba(255,217,61,0.3)';
+      });
+
+      container.appendChild(btn);
+      this.skillButtons.push(btn);
+    });
+
+    document.getElementById('game-container')!.appendChild(container);
   }
 
   // --- Drawing helpers ---

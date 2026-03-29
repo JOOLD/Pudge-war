@@ -13,10 +13,10 @@ interface SkillSlot {
 }
 
 const SKILL_DEFS = [
-  { key: "Q", id: "hook", icon: "\u{1FA9D}", label: "\u9264" },
-  { key: "W", id: "rot", icon: "\u2620\uFE0F", label: "\u8150" },
-  { key: "E", id: "phase", icon: "\u2728", label: "\u865B" },
-  { key: "R", id: "dismember", icon: "\u{1F52A}", label: "\u80A2" },
+  { key: "1", id: "hook", icon: "\u{1FA9D}", label: "\u9264" },
+  { key: "2", id: "rot", icon: "\u2620\uFE0F", label: "\u8150" },
+  { key: "3", id: "phase", icon: "\u2728", label: "\u865B" },
+  { key: "4", id: "dismember", icon: "\u{1F52A}", label: "\u80A2" },
 ];
 
 export class SkillBar {
@@ -35,7 +35,7 @@ export class SkillBar {
       display: "flex",
       gap: "6px",
       zIndex: "50",
-      pointerEvents: "none",
+      pointerEvents: "auto",
     });
 
     // Glass background behind skill slots
