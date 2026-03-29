@@ -100,31 +100,23 @@ export class GameScene extends Phaser.Scene {
     super({ key: "GameScene" });
   }
 
+  private inputAccum: number = 0;
+
   preload() {
-    // Character spritesheets (16x16 per frame, 4 cols x 7 rows)
+    // LPC characters: 576x256 = 9 cols x 4 rows, 64x64 per frame
+    // Row 0=up, 1=left, 2=down, 3=right
     this.load.spritesheet('char-left', '/game-assets/char-left.png', {
-      frameWidth: 16, frameHeight: 16,
+      frameWidth: 64, frameHeight: 64,
     });
     this.load.spritesheet('char-right', '/game-assets/char-right.png', {
-      frameWidth: 16, frameHeight: 16,
+      frameWidth: 64, frameHeight: 64,
     });
 
-    // Floor tileset for map tiling (16x16 tiles)
-    this.load.spritesheet('floor-tiles', '/game-assets/tileset-floor.png', {
-      frameWidth: 16, frameHeight: 16,
-    });
-
-    // Village tileset for obstacles (16x16 tiles)
-    this.load.spritesheet('village-tiles', '/game-assets/tileset-village.png', {
-      frameWidth: 16, frameHeight: 16,
-    });
+    // Shadow for characters
+    this.load.image('shadow', '/game-assets/shadow.png');
 
     // UI
     this.load.image('heart', '/game-assets/heart.png');
-
-    // Particles
-    this.load.image('particle-grass', '/game-assets/particle-grass.png');
-    this.load.image('particle-rock', '/game-assets/particle-rock.png');
   }
 
   create() {
@@ -136,24 +128,22 @@ export class GameScene extends Phaser.Scene {
     // Generate map + hook textures (procedural)
     generateAssets(this);
 
-    // Create character walk animations from spritesheets
-    // Layout: 4 cols x 7 rows, each 16x16
-    // Row 0 (frames 0-3): walk down
-    // Row 1 (frames 4-7): walk up
-    // Row 2 (frames 8-11): walk left
-    // Row 3 (frames 12-15): walk right
-    // Rows 4-6: extra animations (idle uses frame 0)
-    for (const team of ['left', 'right'] as const) {
-      const sheetKey = team === 'left' ? 'char-left' : 'char-right';
-      const prefix = team;
-      if (!this.anims.exists(`${prefix}-walk-down`)) {
-        this.anims.create({ key: `${prefix}-walk-down`, frames: this.anims.generateFrameNumbers(sheetKey, { start: 0, end: 3 }), frameRate: 8, repeat: -1 });
-        this.anims.create({ key: `${prefix}-walk-up`, frames: this.anims.generateFrameNumbers(sheetKey, { start: 4, end: 7 }), frameRate: 8, repeat: -1 });
-        this.anims.create({ key: `${prefix}-walk-left`, frames: this.anims.generateFrameNumbers(sheetKey, { start: 8, end: 11 }), frameRate: 8, repeat: -1 });
-        this.anims.create({ key: `${prefix}-walk-right`, frames: this.anims.generateFrameNumbers(sheetKey, { start: 12, end: 15 }), frameRate: 8, repeat: -1 });
-        this.anims.create({ key: `${prefix}-idle`, frames: [{ key: sheetKey, frame: 0 }], frameRate: 1, repeat: -1 });
+    // Create LPC character walk animations
+    // LPC layout: 9 cols x 4 rows, 64x64 per frame
+    // Row 0 (frames 0-8): facing up, Row 1 (9-17): facing left
+    // Row 2 (18-26): facing down, Row 3 (27-35): facing right
+    // Frame 0 in each row = idle/standing, frames 1-8 = walk cycle
+    ['left', 'right'].forEach(team => {
+      const key = `char-${team}`;
+      if (!this.anims.exists(`${team}-walk-up`)) {
+        this.anims.create({ key: `${team}-walk-up`, frames: this.anims.generateFrameNumbers(key, { start: 1, end: 8 }), frameRate: 10, repeat: -1 });
+        this.anims.create({ key: `${team}-walk-left`, frames: this.anims.generateFrameNumbers(key, { start: 10, end: 17 }), frameRate: 10, repeat: -1 });
+        this.anims.create({ key: `${team}-walk-down`, frames: this.anims.generateFrameNumbers(key, { start: 19, end: 26 }), frameRate: 10, repeat: -1 });
+        this.anims.create({ key: `${team}-walk-right`, frames: this.anims.generateFrameNumbers(key, { start: 28, end: 35 }), frameRate: 10, repeat: -1 });
+        // Idle: facing down standing frame
+        this.anims.create({ key: `${team}-idle`, frames: [{ key, frame: 18 }], frameRate: 1 });
       }
-    }
+    });
 
     // Initialize sound manager
     this.soundManager = new SoundManager();
@@ -440,7 +430,12 @@ export class GameScene extends Phaser.Scene {
       }
     }
 
-    sendInput({ dx, dy, aimX, aimY, hook });
+    // Throttle input sends to ~30fps (matching server tick rate)
+    this.inputAccum += delta;
+    if (this.inputAccum >= 33 || hook) {
+      this.inputAccum = 0;
+      sendInput({ dx, dy, aimX, aimY, hook });
+    }
 
     // Update skill bar cooldowns for local player
     const myPlayer = this.players.get(this.myId);
@@ -518,39 +513,54 @@ export class GameScene extends Phaser.Scene {
     this.players.forEach((sprite, id) => {
       const lerpFactor = Math.min(1, delta / 33); // smooth over ~33ms (30fps server tick)
 
+      // Record previous position for direction detection
+      const prevX = sprite.container.x;
+      const prevY = sprite.container.y;
+
       // Interpolate position
-      const curX = sprite.container.x;
-      const curY = sprite.container.y;
-      sprite.container.x = curX + (sprite.targetX - curX) * lerpFactor;
-      sprite.container.y = curY + (sprite.targetY - curY) * lerpFactor;
+      sprite.container.x = prevX + (sprite.targetX - prevX) * lerpFactor;
+      sprite.container.y = prevY + (sprite.targetY - prevY) * lerpFactor;
+
+      const moveDx = sprite.container.x - prevX;
+      const moveDy = sprite.container.y - prevY;
+      const prefix = sprite.serverTeam === TEAM_LEFT ? 'left' : 'right';
+      const isMoving = Math.abs(moveDx) > 0.5 || Math.abs(moveDy) > 0.5;
+      const body = sprite.body;
 
       // Update alive state
       if (!sprite.serverAlive) {
-        sprite.body.setTint(0x666666);
-        sprite.body.setAlpha(0.4);
-        sprite.body.stop(); // Stop animation when dead
+        body.setTint(0x666666);
+        body.setAlpha(0.4);
+        body.stop(); // Stop animation when dead
         sprite.rotGfx.clear();
       } else {
         const expectedSheet = sprite.serverTeam === TEAM_LEFT ? "char-left" : "char-right";
-        if (sprite.body.texture.key !== expectedSheet) {
-          sprite.body.setTexture(expectedSheet, 0);
+        if (body.texture.key !== expectedSheet) {
+          body.setTexture(expectedSheet, 18);
         }
         // Only restore alpha if not phased
-        if (sprite.phaseTimer <= 0 && sprite.body.alpha < 1) {
-          sprite.body.setAlpha(1);
-          sprite.body.clearTint();
+        if (sprite.phaseTimer <= 0 && body.alpha < 1) {
+          body.setAlpha(1);
+          body.clearTint();
         }
 
-        // Animate based on movement direction
-        const moveDx = sprite.targetX - sprite.container.x;
-        const moveDy = sprite.targetY - sprite.container.y;
-        const animPrefix = sprite.serverTeam === TEAM_LEFT ? 'left' : 'right';
-        if (Math.abs(moveDx) < 0.5 && Math.abs(moveDy) < 0.5) {
-          sprite.body.play(`${animPrefix}-idle`, true);
-        } else if (Math.abs(moveDx) > Math.abs(moveDy)) {
-          sprite.body.play(moveDx > 0 ? `${animPrefix}-walk-right` : `${animPrefix}-walk-left`, true);
+        // Animate based on movement direction (performance: only switch anim when needed)
+        if (isMoving) {
+          let targetAnim: string;
+          if (Math.abs(moveDx) > Math.abs(moveDy)) {
+            targetAnim = moveDx > 0 ? `${prefix}-walk-right` : `${prefix}-walk-left`;
+          } else {
+            targetAnim = moveDy > 0 ? `${prefix}-walk-down` : `${prefix}-walk-up`;
+          }
+          // Only change animation if different from current
+          if (!body.anims.isPlaying || body.anims.currentAnim?.key !== targetAnim) {
+            body.play(targetAnim, true);
+          }
         } else {
-          sprite.body.play(moveDy > 0 ? `${animPrefix}-walk-down` : `${animPrefix}-walk-up`, true);
+          // Idle: only switch if not already idle
+          if (body.anims.currentAnim?.key !== `${prefix}-idle`) {
+            body.play(`${prefix}-idle`, true);
+          }
         }
       }
     });
@@ -590,9 +600,9 @@ export class GameScene extends Phaser.Scene {
     const isLeft = player.team === TEAM_LEFT;
     const sheetKey = isLeft ? "char-left" : "char-right";
 
-    // Player body — use spritesheet with animations
-    const body = this.add.sprite(0, 0, sheetKey, 0);
-    body.setScale(2.5); // Scale 16x16 to ~40x40 to match PLAYER_RADIUS
+    // Player body — LPC spritesheet, frame 18 = facing down idle
+    const body = this.add.sprite(0, 0, sheetKey, 18);
+    body.setScale(0.8); // 64x64 * 0.8 = ~51px, slightly larger than hitbox for visibility
 
     // Nickname
     const nameText = this.add.text(0, -PLAYER_RADIUS - 16, player.nickname, {
