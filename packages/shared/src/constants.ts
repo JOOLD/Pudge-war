@@ -33,6 +33,36 @@ export const SPAWN_X_LEFT = 100;
 export const SPAWN_X_RIGHT = MAP_WIDTH - 100;
 export const SPAWN_Y_OFFSETS = [-100, 0, 100]; // for 3 players
 
+// === Obstacles ===
+export type ObstacleType = 'tree' | 'rock';
+
+export interface ObstacleDef {
+  x: number;
+  y: number;
+  radius: number;
+  type: ObstacleType;
+}
+
+// Trees: block hooks, NOT players (players walk through)
+// Rocks: block BOTH hooks AND players
+// Placed symmetrically on both sides of river
+export const OBSTACLES: ObstacleDef[] = [
+  // Left side trees (3)
+  { x: 180, y: 150, radius: 25, type: 'tree' },
+  { x: 250, y: 400, radius: 25, type: 'tree' },
+  { x: 150, y: 650, radius: 25, type: 'tree' },
+  // Right side trees (3, mirrored)
+  { x: 1020, y: 150, radius: 25, type: 'tree' },
+  { x: 950, y: 400, radius: 25, type: 'tree' },
+  { x: 1050, y: 650, radius: 25, type: 'tree' },
+  // Left side rocks (2)
+  { x: 350, y: 250, radius: 30, type: 'rock' },
+  { x: 300, y: 580, radius: 30, type: 'rock' },
+  // Right side rocks (2, mirrored)
+  { x: 850, y: 250, radius: 30, type: 'rock' },
+  { x: 900, y: 580, radius: 30, type: 'rock' },
+];
+
 // === Colors (Animal Crossing pastel palette) ===
 export const COLORS = {
   // Team colors

@@ -10,6 +10,7 @@ export function generateAssets(scene: Phaser.Scene) {
   generatePlayerSprites(scene);
   generateHookSprites(scene);
   generateParticles(scene);
+  generateObstacles(scene);
 }
 
 function generateMap(scene: Phaser.Scene) {
@@ -207,6 +208,106 @@ function generateHookSprites(scene: Phaser.Scene) {
   cg.fillCircle(3, 3, 1);
   cg.generateTexture("chain-link", 8, 8);
   cg.destroy();
+}
+
+function generateObstacles(scene: Phaser.Scene) {
+  generateTreeTexture(scene);
+  generateRockTexture(scene);
+}
+
+function generateTreeTexture(scene: Phaser.Scene) {
+  const size = 60;
+  const cx = size / 2;
+  const cy = size / 2;
+  const g = scene.make.graphics({ x: 0, y: 0 });
+
+  // Shadow
+  g.fillStyle(0x000000, 0.12);
+  g.fillEllipse(cx, cy + 18, 30, 10);
+
+  // Trunk (brown rectangle)
+  g.fillStyle(0x8b6914);
+  g.fillRect(cx - 4, cy + 4, 8, 16);
+  // Trunk highlight
+  g.fillStyle(0xa87d2a, 0.6);
+  g.fillRect(cx - 2, cy + 4, 3, 16);
+
+  // Foliage (main green circle)
+  g.fillStyle(0x4aaa3a);
+  g.fillCircle(cx, cy - 4, 22);
+
+  // Lighter green overlay for depth
+  g.fillStyle(0x6acc5a);
+  g.fillCircle(cx - 4, cy - 8, 16);
+
+  // Light green highlight on top-left
+  g.fillStyle(0x8aee7a, 0.5);
+  g.fillCircle(cx - 8, cy - 12, 8);
+
+  // Small fruits / flowers
+  g.fillStyle(0xff6b6b);
+  g.fillCircle(cx + 10, cy - 8, 3);
+  g.fillStyle(0xffd93d);
+  g.fillCircle(cx - 6, cy + 2, 2.5);
+  g.fillStyle(0xff9ecf);
+  g.fillCircle(cx + 4, cy - 16, 2.5);
+
+  // Tiny white highlights on fruits
+  g.fillStyle(0xffffff, 0.5);
+  g.fillCircle(cx + 9, cy - 9, 1);
+  g.fillCircle(cx - 7, cy + 1, 1);
+
+  g.generateTexture("obstacle-tree", size, size);
+  g.destroy();
+}
+
+function generateRockTexture(scene: Phaser.Scene) {
+  const size = 60;
+  const cx = size / 2;
+  const cy = size / 2;
+  const g = scene.make.graphics({ x: 0, y: 0 });
+
+  // Shadow
+  g.fillStyle(0x000000, 0.12);
+  g.fillEllipse(cx, cy + 14, 40, 12);
+
+  // Main rock body (dark gray ellipse)
+  g.fillStyle(0x888888);
+  g.fillEllipse(cx, cy + 2, 44, 32);
+
+  // Lighter gray top surface
+  g.fillStyle(0xa8a8a8);
+  g.fillEllipse(cx, cy - 2, 38, 24);
+
+  // Dark bottom shadow
+  g.fillStyle(0x666666, 0.5);
+  g.fillEllipse(cx, cy + 10, 36, 12);
+
+  // Top highlight
+  g.fillStyle(0xcccccc, 0.6);
+  g.fillEllipse(cx - 6, cy - 8, 16, 8);
+
+  // Small bright highlight
+  g.fillStyle(0xffffff, 0.3);
+  g.fillCircle(cx - 8, cy - 8, 4);
+
+  // Moss / grass on top
+  g.fillStyle(0x6aaa4a);
+  g.fillCircle(cx + 8, cy - 10, 4);
+  g.fillCircle(cx + 4, cy - 12, 3);
+  g.fillStyle(0x8ace6a);
+  g.fillCircle(cx + 6, cy - 12, 2.5);
+
+  // Small crack detail
+  g.lineStyle(1, 0x666666, 0.4);
+  g.beginPath();
+  g.moveTo(cx - 4, cy - 2);
+  g.lineTo(cx + 2, cy + 4);
+  g.lineTo(cx + 6, cy + 2);
+  g.strokePath();
+
+  g.generateTexture("obstacle-rock", size, size);
+  g.destroy();
 }
 
 function generateParticles(scene: Phaser.Scene) {

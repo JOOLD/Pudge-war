@@ -4,7 +4,7 @@ import { getRoom, sendInput } from "../network/client";
 import { generateAssets } from "./AssetGenerator";
 import {
   COLORS, MAP_WIDTH, MAP_HEIGHT, PLAYER_RADIUS,
-  HOOK_COOLDOWN, TEAM_LEFT, TEAM_RIGHT,
+  HOOK_COOLDOWN, TEAM_LEFT, TEAM_RIGHT, OBSTACLES,
 } from "shared";
 
 interface PlayerSprite {
@@ -54,6 +54,13 @@ export class GameScene extends Phaser.Scene {
 
     // Draw map
     this.add.image(MAP_WIDTH / 2, MAP_HEIGHT / 2, "map");
+
+    // Render obstacles
+    OBSTACLES.forEach((obs) => {
+      const textureKey = obs.type === 'tree' ? 'obstacle-tree' : 'obstacle-rock';
+      const sprite = this.add.image(obs.x, obs.y, textureKey);
+      sprite.setDepth(obs.type === 'tree' ? 5 : 3); // Trees above players, rocks below
+    });
 
     // Setup camera
     this.cameras.main.setBounds(0, 0, MAP_WIDTH, MAP_HEIGHT);
@@ -116,6 +123,30 @@ export class GameScene extends Phaser.Scene {
     this.room.onMessage("hookHit", (data: any) => {
       // Play hook hit effect
       this.cameras.main.shake(100, 0.005);
+    });
+
+    // Hook blocked by obstacle
+    this.room.onMessage("hookBlocked", (data: { x: number; y: number; obstacleType: string }) => {
+      const count = data.obstacleType === 'tree' ? 6 : 8;
+      const color = data.obstacleType === 'tree' ? 0x6acc5a : 0xa8a8a8;
+      for (let i = 0; i < count; i++) {
+        const angle = (Math.PI * 2 * i) / count;
+        const speed = 40 + Math.random() * 30;
+        const px = data.x + Math.cos(angle) * 4;
+        const py = data.y + Math.sin(angle) * 4;
+        const particle = this.add.circle(px, py, data.obstacleType === 'tree' ? 3 : 2, color);
+        particle.setDepth(20);
+        this.tweens.add({
+          targets: particle,
+          x: px + Math.cos(angle) * speed,
+          y: py + Math.sin(angle) * speed - 10,
+          alpha: 0,
+          scale: 0.3,
+          duration: 400,
+          ease: 'Power2',
+          onComplete: () => particle.destroy(),
+        });
+      }
     });
 
     // Game over

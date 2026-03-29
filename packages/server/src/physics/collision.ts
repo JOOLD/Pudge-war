@@ -2,6 +2,7 @@ import {
   MAP_WIDTH, MAP_HEIGHT, PLAYER_RADIUS, RIVER_X, RIVER_WIDTH,
   HOOK_RADIUS, HOOK_MAX_RANGE, HOOK_SPEED, HOOK_PULL_SPEED,
   PLAYER_SPEED, TEAM_LEFT, TEAM_RIGHT,
+  OBSTACLES, ObstacleDef,
 } from "shared";
 
 export interface Vec2 {
@@ -65,7 +66,49 @@ export function movePlayer(
   const newX = x + dx * PLAYER_SPEED * dt;
   const newY = y + dy * PLAYER_SPEED * dt;
 
-  return clampPlayerPosition(newX, newY, team);
+  const clamped = clampPlayerPosition(newX, newY, team);
+  return clampToObstacles(clamped.x, clamped.y, PLAYER_RADIUS);
+}
+
+// Check if a hook collides with any obstacle
+// Returns the first obstacle hit, or null
+export function hookObstacleCollision(
+  hookX: number, hookY: number, hookRadius: number
+): ObstacleDef | null {
+  for (const obs of OBSTACLES) {
+    if (circleCollision(
+      { x: hookX, y: hookY }, hookRadius,
+      { x: obs.x, y: obs.y }, obs.radius
+    )) {
+      return obs; // Both trees and rocks block hooks
+    }
+  }
+  return null;
+}
+
+// Clamp player position to avoid rocks (NOT trees - players walk through trees)
+export function clampToObstacles(x: number, y: number, playerRadius: number): Vec2 {
+  let cx = x;
+  let cy = y;
+
+  for (const obs of OBSTACLES) {
+    if (obs.type !== 'rock') continue; // Only rocks block players
+
+    const dx = cx - obs.x;
+    const dy = cy - obs.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    const minDist = playerRadius + obs.radius;
+
+    if (dist < minDist && dist > 0) {
+      // Push player out of rock
+      const nx = dx / dist;
+      const ny = dy / dist;
+      cx = obs.x + nx * minDist;
+      cy = obs.y + ny * minDist;
+    }
+  }
+
+  return { x: cx, y: cy };
 }
 
 // Update hook position (flying state)
