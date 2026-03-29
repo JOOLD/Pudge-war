@@ -1,16 +1,24 @@
 import { Room, Client } from "@colyseus/core";
-import { GameState, PlayerSchema, HookSchema } from "./schema";
+import { GameState, PlayerSchema, HookSchema, RuneSchema } from "./schema";
 import {
   TICK_RATE, KILLS_TO_WIN, MAX_PLAYERS, MAX_PLAYERS_PER_TEAM,
-  TEAM_LEFT, TEAM_RIGHT, PLAYER_MAX_HP, HOOK_COOLDOWN,
-  RESPAWN_TIME, HOOK_RADIUS, PLAYER_RADIUS,
+  TEAM_LEFT, TEAM_RIGHT, PLAYER_MAX_HP, PLAYER_SPEED, HOOK_COOLDOWN,
+  RESPAWN_TIME, HOOK_RADIUS, PLAYER_RADIUS, HOOK_DAMAGE, HOOK_MAX_RANGE,
   SPAWN_X_LEFT, SPAWN_X_RIGHT, SPAWN_Y_OFFSETS,
   MAP_HEIGHT,
+  // Rune constants
+  RUNE_SPAWN_INTERVAL, RUNE_FIRST_SPAWN, RUNE_PICKUP_RADIUS,
+  RUNE_TYPES, RUNE_POSITIONS, RUNE_EFFECTS,
+  // Level constants
+  EXP_PER_KILL, EXP_PER_ASSIST, MAX_LEVEL, EXP_PER_LEVEL,
+  HP_PER_LEVEL, SPEED_PER_LEVEL, HOOK_DAMAGE_PER_LEVEL, HOOK_RANGE_LEVEL_BONUSES,
+  // Consumable constants
+  CONSUMABLES,
 } from "shared";
 import { InputMessage, HookState, GamePhase } from "shared";
 import {
   movePlayer, moveHook, pullTarget, returnHook,
-  circleCollision, normalize,
+  circleCollision, normalize, distance, clampPlayerPosition,
 } from "../physics/collision";
 
 export class PudgeRoom extends Room<GameState> {
@@ -18,6 +26,8 @@ export class PudgeRoom extends Room<GameState> {
   private playerInputs: Map<string, InputMessage> = new Map();
   private leftCount = 0;
   private rightCount = 0;
+  private runeSpawnTimer = 0;
+  private gameTime = 0;
 
   onCreate(options: any) {
     const state = new GameState();
@@ -47,6 +57,47 @@ export class PudgeRoom extends Room<GameState> {
       }
     });
 
+    // Handle buy consumable
+    this.onMessage("buy", (client, msg: { itemId: string }) => {
+      if (this.state.phase !== GamePhase.PLAYING) return;
+      const player = this.state.players.get(client.sessionId);
+      if (!player || !player.alive) return;
+
+      const def = CONSUMABLES.find(c => c.id === msg.itemId);
+      if (!def) return;
+      if (player.gold < def.cost) return;
+
+      switch (def.id) {
+        case 'salve':
+          player.gold -= def.cost;
+          player.healOverTime += 200; // will heal 20/s for 10s
+          break;
+        case 'potion':
+          player.gold -= def.cost;
+          player.hp = Math.min(player.hp + 300, this.getEffectiveMaxHp(player));
+          break;
+        case 'tome_exp':
+          player.gold -= def.cost;
+          this.grantExp(player, player.expToNext - player.exp); // instant level up
+          break;
+        case 'tome_damage':
+          player.gold -= def.cost;
+          player.bonusDamage += 25;
+          break;
+        case 'tome_hp':
+          player.gold -= def.cost;
+          player.bonusMaxHp += 100;
+          player.hp = Math.min(player.hp + 100, this.getEffectiveMaxHp(player));
+          break;
+      }
+
+      this.broadcast("itemPurchased", {
+        nickname: player.nickname,
+        itemId: def.id,
+        itemName: def.name,
+      });
+    });
+
     // Start game loop
     this.tickInterval = setInterval(() => this.gameLoop(), 1000 / TICK_RATE);
   }
@@ -70,7 +121,7 @@ export class PudgeRoom extends Room<GameState> {
     // Set spawn position
     this.respawnPlayer(player);
 
-    player.hp = PLAYER_MAX_HP;
+    player.hp = this.getEffectiveMaxHp(player);
     player.alive = true;
     player.hook = new HookSchema();
 
@@ -115,6 +166,12 @@ export class PudgeRoom extends Room<GameState> {
     this.state.leftScore = 0;
     this.state.rightScore = 0;
     this.state.winningTeam = -1;
+    this.gameTime = 0;
+    this.state.gameTime = 0;
+    this.runeSpawnTimer = RUNE_SPAWN_INTERVAL;
+
+    // Clear runes
+    this.state.runes.splice(0, this.state.runes.length);
 
     // Reset all players
     this.state.players.forEach((player) => {
@@ -125,6 +182,23 @@ export class PudgeRoom extends Room<GameState> {
       player.hookCooldown = 0;
       player.respawnTimer = 0;
       player.hook.state = "idle";
+
+      // Reset rune state
+      player.activeRune = "";
+      player.runeTimer = 0;
+      player.invisible = false;
+
+      // Reset level state
+      player.level = 1;
+      player.exp = 0;
+      player.expToNext = EXP_PER_LEVEL;
+
+      // Reset consumable state
+      player.gold = 0;
+      player.healOverTime = 0;
+      player.bonusDamage = 0;
+      player.bonusMaxHp = 0;
+
       this.respawnPlayer(player);
     });
 
@@ -145,9 +219,14 @@ export class PudgeRoom extends Room<GameState> {
       player.x = SPAWN_X_RIGHT;
     }
     player.y = yCenter + yOffset;
-    player.hp = PLAYER_MAX_HP;
+    player.hp = this.getEffectiveMaxHp(player);
     player.alive = true;
     player.hook.state = "idle";
+
+    // Clear rune effects on respawn
+    player.activeRune = "";
+    player.runeTimer = 0;
+    player.invisible = false;
   }
 
   private releaseHookedTarget(owner: PlayerSchema) {
@@ -165,11 +244,19 @@ export class PudgeRoom extends Room<GameState> {
     if (this.state.phase !== GamePhase.PLAYING) return;
 
     const dt = 1 / TICK_RATE;
+    const dtMs = 1000 / TICK_RATE;
+
+    // Update game time
+    this.gameTime += dtMs;
+    this.state.gameTime = this.gameTime;
+
+    // === Rune spawn logic ===
+    this.updateRunes(dtMs);
 
     this.state.players.forEach((player, sessionId) => {
       // Handle respawn timer
       if (!player.alive) {
-        player.respawnTimer -= (1000 / TICK_RATE);
+        player.respawnTimer -= dtMs;
         if (player.respawnTimer <= 0) {
           this.respawnPlayer(player);
         }
@@ -178,9 +265,24 @@ export class PudgeRoom extends Room<GameState> {
 
       // Handle cooldown
       if (player.hookCooldown > 0) {
-        player.hookCooldown -= (1000 / TICK_RATE);
+        player.hookCooldown -= dtMs;
         if (player.hookCooldown < 0) player.hookCooldown = 0;
       }
+
+      // === Process rune effects ===
+      this.processRuneEffects(player, dt, dtMs);
+
+      // === Process heal over time (salve) ===
+      if (player.healOverTime > 0) {
+        const healRate = 20; // 20 HP/s (200 total over 10s)
+        const healAmount = healRate * dt;
+        player.hp = Math.min(player.hp + healAmount, this.getEffectiveMaxHp(player));
+        player.healOverTime -= healAmount;
+        if (player.healOverTime <= 0) player.healOverTime = 0;
+      }
+
+      // === Rune pickup check ===
+      this.checkRunePickup(player);
 
       const input = this.playerInputs.get(sessionId);
       if (!input) return;
@@ -191,7 +293,8 @@ export class PudgeRoom extends Room<GameState> {
 
       // Move player (only if not being pulled)
       if (player.hook.state !== "hit" || player.hook.targetId !== sessionId) {
-        const pos = movePlayer(player.x, player.y, input.dx, input.dy, player.team, dt);
+        const speed = this.getEffectiveMoveSpeed(player);
+        const pos = this.movePlayerWithSpeed(player.x, player.y, input.dx, input.dy, player.team, dt, speed);
         player.x = pos.x;
         player.y = pos.y;
       }
@@ -240,6 +343,13 @@ export class PudgeRoom extends Room<GameState> {
           hook.state = "flying";
           hook.targetId = "";
           player.hookCooldown = HOOK_COOLDOWN;
+
+          // Break invisibility on ability use
+          if (player.activeRune === 'invis') {
+            player.activeRune = "";
+            player.runeTimer = 0;
+            player.invisible = false;
+          }
         }
         break;
 
@@ -249,8 +359,19 @@ export class PudgeRoom extends Room<GameState> {
         hook.x = result.x;
         hook.y = result.y;
 
-        // Check out of range
-        if (result.outOfRange) {
+        // Check out of range (with level bonus range extending base HOOK_MAX_RANGE)
+        const bonusRange = this.getEffectiveHookRange(player);
+        if (bonusRange > 0) {
+          // Override base range check with extended range
+          const hookDist = distance(
+            { x: hook.x, y: hook.y },
+            { x: hook.startX, y: hook.startY }
+          );
+          if (hookDist >= (HOOK_MAX_RANGE + bonusRange)) {
+            hook.state = "returning";
+            break;
+          }
+        } else if (result.outOfRange) {
           hook.state = "returning";
           break;
         }
@@ -295,28 +416,45 @@ export class PudgeRoom extends Room<GameState> {
         hook.y = target.y;
 
         if (pullResult.arrived) {
-          // Kill the target
-          target.alive = false;
-          target.hp = 0;
-          target.deaths++;
-          target.respawnTimer = RESPAWN_TIME;
-          player.kills++;
+          // Apply hook damage
+          const hookDamage = this.getEffectiveHookDamage(player);
+          target.hp -= hookDamage;
 
-          // Update score
-          if (player.team === TEAM_LEFT) {
-            this.state.leftScore++;
-          } else {
-            this.state.rightScore++;
+          if (target.hp <= 0) {
+            // Kill the target
+            target.alive = false;
+            target.hp = 0;
+            target.deaths++;
+            target.respawnTimer = RESPAWN_TIME;
+            player.kills++;
+
+            // Grant exp and gold to killer
+            this.grantExp(player, EXP_PER_KILL);
+            player.gold += 100;
+
+            // Break invisibility on attack
+            if (player.activeRune === 'invis') {
+              player.activeRune = "";
+              player.runeTimer = 0;
+              player.invisible = false;
+            }
+
+            // Update score
+            if (player.team === TEAM_LEFT) {
+              this.state.leftScore++;
+            } else {
+              this.state.rightScore++;
+            }
+
+            this.broadcast("kill", {
+              killerName: player.nickname,
+              victimName: target.nickname,
+              killerTeam: player.team,
+            });
           }
 
           hook.state = "idle";
           hook.targetId = "";
-
-          this.broadcast("kill", {
-            killerName: player.nickname,
-            victimName: target.nickname,
-            killerTeam: player.team,
-          });
         }
         break;
       }
@@ -332,5 +470,152 @@ export class PudgeRoom extends Room<GameState> {
         break;
       }
     }
+  }
+
+  // === Rune System ===
+
+  private updateRunes(dtMs: number) {
+    // Don't spawn runes before RUNE_FIRST_SPAWN
+    if (this.gameTime < RUNE_FIRST_SPAWN) return;
+
+    this.runeSpawnTimer -= dtMs;
+    if (this.runeSpawnTimer <= 0) {
+      this.runeSpawnTimer = RUNE_SPAWN_INTERVAL;
+      this.spawnRunes();
+    }
+  }
+
+  private spawnRunes() {
+    // Remove old inactive runes
+    for (let i = this.state.runes.length - 1; i >= 0; i--) {
+      const r = this.state.runes.at(i);
+      if (r && !r.active) {
+        this.state.runes.splice(i, 1);
+      }
+    }
+
+    // Spawn rune at each position
+    for (const pos of RUNE_POSITIONS) {
+      const rune = new RuneSchema();
+      rune.x = pos.x;
+      rune.y = pos.y;
+      rune.runeType = RUNE_TYPES[Math.floor(Math.random() * RUNE_TYPES.length)];
+      rune.active = true;
+      this.state.runes.push(rune);
+    }
+
+    this.broadcast("runesSpawned", {});
+  }
+
+  private checkRunePickup(player: PlayerSchema) {
+    for (let i = 0; i < this.state.runes.length; i++) {
+      const rune = this.state.runes.at(i);
+      if (!rune || !rune.active) continue;
+
+      const dist = distance({ x: player.x, y: player.y }, { x: rune.x, y: rune.y });
+      if (dist < RUNE_PICKUP_RADIUS) {
+        rune.active = false;
+
+        // Apply rune effect
+        const runeType = rune.runeType as keyof typeof RUNE_EFFECTS;
+        player.activeRune = rune.runeType;
+        player.runeTimer = RUNE_EFFECTS[runeType].duration;
+
+        if (rune.runeType === 'invis') {
+          player.invisible = true;
+        }
+
+        this.broadcast("runePicked", {
+          nickname: player.nickname,
+          runeType: rune.runeType,
+        });
+        break; // only pick up one rune per tick
+      }
+    }
+  }
+
+  private processRuneEffects(player: PlayerSchema, dt: number, dtMs: number) {
+    if (!player.activeRune || player.runeTimer <= 0) return;
+
+    // Regen rune: heal 50 HP/s
+    if (player.activeRune === 'regen') {
+      const healAmount = 50 * dt;
+      player.hp = Math.min(player.hp + healAmount, this.getEffectiveMaxHp(player));
+    }
+
+    // Decrement timer
+    player.runeTimer -= dtMs;
+    if (player.runeTimer <= 0) {
+      player.runeTimer = 0;
+      if (player.activeRune === 'invis') {
+        player.invisible = false;
+      }
+      player.activeRune = "";
+    }
+  }
+
+  // === Level System ===
+
+  private grantExp(player: PlayerSchema, amount: number) {
+    if (player.level >= MAX_LEVEL) return;
+    player.exp += amount;
+    while (player.exp >= player.expToNext && player.level < MAX_LEVEL) {
+      player.exp -= player.expToNext;
+      player.level++;
+      player.expToNext = EXP_PER_LEVEL * player.level;
+
+      // Heal to new max HP on level up
+      player.hp = this.getEffectiveMaxHp(player);
+
+      this.broadcast("levelUp", { nickname: player.nickname, level: player.level });
+    }
+  }
+
+  // === Effective Stat Getters ===
+
+  private getEffectiveMaxHp(player: PlayerSchema): number {
+    return PLAYER_MAX_HP + player.level * HP_PER_LEVEL + player.bonusMaxHp;
+  }
+
+  private getEffectiveMoveSpeed(player: PlayerSchema): number {
+    let speed = PLAYER_SPEED + player.level * SPEED_PER_LEVEL;
+    if (player.activeRune === 'haste') {
+      speed *= 1.5;
+    }
+    return speed;
+  }
+
+  private getEffectiveHookDamage(player: PlayerSchema): number {
+    let damage = HOOK_DAMAGE + player.level * HOOK_DAMAGE_PER_LEVEL + player.bonusDamage;
+    if (player.activeRune === 'dd') {
+      damage *= 2;
+    }
+    return damage;
+  }
+
+  private movePlayerWithSpeed(
+    x: number, y: number, dx: number, dy: number,
+    team: number, dt: number, speed: number
+  ): { x: number; y: number } {
+    let len = Math.sqrt(dx * dx + dy * dy);
+    if (len > 0) {
+      dx /= len;
+      dy /= len;
+    }
+    const newX = x + dx * speed * dt;
+    const newY = y + dy * speed * dt;
+    return clampPlayerPosition(newX, newY, team);
+  }
+
+  private getEffectiveHookRange(player: PlayerSchema): number {
+    let range = 0; // base range from HOOK_MAX_RANGE is used in collision.ts
+    let bonusCount = 0;
+    for (const milestone of HOOK_RANGE_LEVEL_BONUSES) {
+      if (player.level >= milestone) {
+        bonusCount++;
+      }
+    }
+    range += bonusCount * 50;
+    return range;
   }
 }
