@@ -27,22 +27,42 @@ export class PlayerSchema extends Schema {
   @type("number") hookCooldown: number = 0; // ms remaining
   @type("number") respawnTimer: number = 0; // ms remaining
   @type("number") spawnIndex: number = 0;
-  // === Skill: Rot (W) ===
-  @type("boolean") rotActive: boolean = false;
 
-  // === Skill: Phase Shift (E) ===
-  @type("number") phaseTimer: number = 0;      // ms remaining of phase shift
-  @type("number") phaseCooldown: number = 0;    // ms remaining of phase cooldown
-
-  // === Skill: Dismember (R) ===
-  @type("number") dismemberTimer: number = 0;   // ms remaining of dismember channel
-  @type("string") dismemberTarget: string = ""; // sessionId of dismember target
-  @type("number") dismemberCooldown: number = 0;
-
-  // === Phase A: HP system ===
-  @type("number") stunTimer: number = 0;        // ms remaining of stun (from hook)
+  // Gold & assists
   @type("number") gold: number = 0;
   @type("number") assists: number = 0;
+
+  // Stun state (from hook)
+  @type("number") stunTimer: number = 0;
+
+  // Rot state
+  @type("boolean") rotActive: boolean = false;
+  @type("number") rotCooldown: number = 0;
+
+  // Phase state
+  @type("boolean") phaseActive: boolean = false;
+  @type("number") phaseTimer: number = 0;
+  @type("number") phaseCooldown: number = 0;
+
+  // Dismember state
+  @type("boolean") dismemberActive: boolean = false;
+  @type("number") dismemberTimer: number = 0;
+  @type("number") dismemberCooldown: number = 0;
+  @type("string") dismemberTargetId: string = "";
+
+  // Upgrade levels
+  @type("number") upgradeHookRange: number = 0;
+  @type("number") upgradeHookSpeed: number = 0;
+  @type("number") upgradeHookCooldown: number = 0;
+  @type("number") upgradeRotDamage: number = 0;
+  @type("number") upgradeRotRadius: number = 0;
+  @type("number") upgradePhaseDuration: number = 0;
+  @type("number") upgradePhaseCooldown: number = 0;
+  @type("number") upgradeDismemberDamage: number = 0;
+  @type("number") upgradeDismemberDuration: number = 0;
+  @type("number") upgradeHpMax: number = 0;
+  @type("number") upgradeHpRegen: number = 0;
+  @type("number") upgradeMoveSpeed: number = 0;
 }
 
 export class GameState extends Schema {
