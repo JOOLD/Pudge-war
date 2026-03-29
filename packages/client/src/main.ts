@@ -21,6 +21,7 @@ const config: Phaser.Types.Core.GameConfig = {
   input: {
     keyboard: true,
     mouse: true,
+    touch: true,
   },
   autoStart: false, // Don't start until connected
 };
