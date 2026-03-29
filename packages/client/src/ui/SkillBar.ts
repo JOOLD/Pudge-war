@@ -1,20 +1,22 @@
 /**
  * SkillBar — DOM-based skill bar UI at bottom center of screen.
  * 4 skill slots: Q (Hook), W (Rot), E (Phase), R (Dismember)
+ * Glass design with golden accents.
  */
 
 interface SkillSlot {
   element: HTMLDivElement;
   cooldownOverlay: HTMLDivElement;
+  cooldownTimer: HTMLDivElement;
   keyLabel: HTMLDivElement;
   iconLabel: HTMLDivElement;
 }
 
 const SKILL_DEFS = [
-  { key: "Q", id: "hook", icon: "🪝", label: "鉤" },
-  { key: "W", id: "rot", icon: "☠️", label: "腐" },
-  { key: "E", id: "phase", icon: "✨", label: "虛" },
-  { key: "R", id: "dismember", icon: "🔪", label: "肢" },
+  { key: "Q", id: "hook", icon: "\u{1FA9D}", label: "\u9264" },
+  { key: "W", id: "rot", icon: "\u2620\uFE0F", label: "\u8150" },
+  { key: "E", id: "phase", icon: "\u2728", label: "\u865B" },
+  { key: "R", id: "dismember", icon: "\u{1F52A}", label: "\u80A2" },
 ];
 
 export class SkillBar {
@@ -27,13 +29,24 @@ export class SkillBar {
     this.container.id = "skill-bar";
     Object.assign(this.container.style, {
       position: "absolute",
-      bottom: "12px",
+      bottom: "14px",
       left: "50%",
       transform: "translateX(-50%)",
       display: "flex",
-      gap: "8px",
+      gap: "6px",
       zIndex: "50",
       pointerEvents: "none",
+    });
+
+    // Glass background behind skill slots
+    Object.assign(this.container.style, {
+      background: "rgba(0, 0, 0, 0.35)",
+      backdropFilter: "blur(12px)",
+      WebkitBackdropFilter: "blur(12px)",
+      borderRadius: "16px",
+      padding: "7px 12px",
+      border: "1px solid rgba(255, 217, 61, 0.15)",
+      boxShadow: "0 4px 20px rgba(0, 0, 0, 0.4), inset 0 1px 0 rgba(255,255,255,0.05)",
     });
 
     for (const def of SKILL_DEFS) {
@@ -48,11 +61,11 @@ export class SkillBar {
   private createSlot(key: string, icon: string): SkillSlot {
     const element = document.createElement("div");
     Object.assign(element.style, {
-      width: "48px",
-      height: "48px",
-      borderRadius: "10px",
-      border: "3px solid #e6c235",
-      background: "rgba(60, 40, 10, 0.75)",
+      width: "52px",
+      height: "52px",
+      borderRadius: "12px",
+      border: "1.5px solid rgba(255, 217, 61, 0.35)",
+      background: "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%)",
       position: "relative",
       display: "flex",
       alignItems: "center",
@@ -60,8 +73,22 @@ export class SkillBar {
       overflow: "hidden",
       pointerEvents: "auto",
       cursor: "pointer",
-      boxShadow: "0 2px 8px rgba(0,0,0,0.3)",
-      transition: "border-color 0.2s, box-shadow 0.2s",
+      boxShadow: "0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.08)",
+      transition: "border-color 0.2s, box-shadow 0.2s, background 0.2s, transform 0.15s",
+    });
+
+    // Hover effect via event listeners
+    element.addEventListener("mouseenter", () => {
+      if (element.style.borderColor !== "#4eff4e") {
+        element.style.transform = "translateY(-1px)";
+        element.style.boxShadow = "0 4px 14px rgba(255,217,61,0.2), inset 0 1px 0 rgba(255,255,255,0.1)";
+      }
+    });
+    element.addEventListener("mouseleave", () => {
+      if (element.style.borderColor !== "#4eff4e") {
+        element.style.transform = "translateY(0)";
+        element.style.boxShadow = "0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.08)";
+      }
     });
 
     // Icon
@@ -70,6 +97,7 @@ export class SkillBar {
       fontSize: "22px",
       lineHeight: "1",
       userSelect: "none",
+      filter: "drop-shadow(0 1px 2px rgba(0,0,0,0.3))",
     });
     iconLabel.textContent = icon;
     element.appendChild(iconLabel);
@@ -78,19 +106,20 @@ export class SkillBar {
     const keyLabel = document.createElement("div");
     Object.assign(keyLabel.style, {
       position: "absolute",
-      top: "1px",
-      left: "3px",
+      top: "2px",
+      left: "4px",
       fontSize: "10px",
       fontWeight: "900",
       color: "#ffd93d",
       fontFamily: "Nunito, sans-serif",
-      textShadow: "1px 1px 0 #333",
+      textShadow: "0 1px 3px rgba(0,0,0,0.6)",
       userSelect: "none",
+      letterSpacing: "0.5px",
     });
     keyLabel.textContent = key;
     element.appendChild(keyLabel);
 
-    // Cooldown overlay (sweeping clock-like from top)
+    // Cooldown overlay (sweeping wipe from top)
     const cooldownOverlay = document.createElement("div");
     Object.assign(cooldownOverlay.style, {
       position: "absolute",
@@ -99,14 +128,33 @@ export class SkillBar {
       width: "100%",
       height: "100%",
       background: "rgba(0, 0, 0, 0.6)",
-      clipPath: "inset(0 0 0 0)", // will be updated
+      clipPath: "inset(0 0 0 0)",
       pointerEvents: "none",
       transition: "clip-path 0.05s linear",
+      borderRadius: "12px",
     });
     cooldownOverlay.style.display = "none";
     element.appendChild(cooldownOverlay);
 
-    return { element, cooldownOverlay, keyLabel, iconLabel };
+    // Cooldown timer text (centered)
+    const cooldownTimer = document.createElement("div");
+    Object.assign(cooldownTimer.style, {
+      position: "absolute",
+      top: "50%",
+      left: "50%",
+      transform: "translate(-50%, -50%)",
+      fontSize: "14px",
+      fontWeight: "900",
+      color: "rgba(255,255,255,0.8)",
+      fontFamily: "Nunito, sans-serif",
+      textShadow: "0 1px 4px rgba(0,0,0,0.8)",
+      pointerEvents: "none",
+      userSelect: "none",
+      display: "none",
+    });
+    element.appendChild(cooldownTimer);
+
+    return { element, cooldownOverlay, cooldownTimer, keyLabel, iconLabel };
   }
 
   /**
@@ -120,13 +168,14 @@ export class SkillBar {
 
     if (progress <= 0) {
       slot.cooldownOverlay.style.display = "none";
+      slot.cooldownTimer.style.display = "none";
       slot.element.style.opacity = "1";
     } else {
       slot.cooldownOverlay.style.display = "block";
-      // Sweep from top down: inset(0 0 X% 0) where X is (1-progress)*100
+      // Sweep from top down
       const visiblePct = Math.max(0, Math.min(100, (1 - progress) * 100));
       slot.cooldownOverlay.style.clipPath = `inset(${visiblePct}% 0 0 0)`;
-      slot.element.style.opacity = "0.85";
+      slot.element.style.opacity = "0.8";
     }
   }
 
@@ -139,12 +188,12 @@ export class SkillBar {
 
     if (active) {
       slot.element.style.borderColor = "#4eff4e";
-      slot.element.style.boxShadow = "0 0 12px rgba(78, 255, 78, 0.6), 0 2px 8px rgba(0,0,0,0.3)";
-      slot.element.style.background = "rgba(30, 80, 20, 0.85)";
+      slot.element.style.boxShadow = "0 0 16px rgba(78, 255, 78, 0.45), 0 2px 8px rgba(0,0,0,0.2), inset 0 0 10px rgba(78, 255, 78, 0.1)";
+      slot.element.style.background = "linear-gradient(180deg, rgba(30,100,20,0.4) 0%, rgba(20,60,15,0.3) 100%)";
     } else {
-      slot.element.style.borderColor = "#e6c235";
-      slot.element.style.boxShadow = "0 2px 8px rgba(0,0,0,0.3)";
-      slot.element.style.background = "rgba(60, 40, 10, 0.75)";
+      slot.element.style.borderColor = "rgba(255, 217, 61, 0.35)";
+      slot.element.style.boxShadow = "0 2px 8px rgba(0,0,0,0.25), inset 0 1px 0 rgba(255,255,255,0.08)";
+      slot.element.style.background = "linear-gradient(180deg, rgba(255,255,255,0.08) 0%, rgba(255,255,255,0.02) 100%)";
     }
   }
 
