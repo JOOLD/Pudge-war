@@ -82,7 +82,9 @@ export class GameScene extends Phaser.Scene {
   private mouseWorldX: number = 0;
   private mouseWorldY: number = 0;
   private wantHook: boolean = false;
-  private rightMouseDown: boolean = false;
+  private moveTargetX: number = -1;
+  private moveTargetY: number = -1;
+  private hasMovetarget: boolean = false;
   private scoreText!: Phaser.GameObjects.Text;
   private soundManager!: SoundManager;
   private touchControls: TouchControls | null = null;
@@ -187,20 +189,17 @@ export class GameScene extends Phaser.Scene {
         this.mouseWorldY = pointer.worldY;
       });
 
-      // Right click = move, Left click = hook
+      // Right click = set move destination (Dota-style click-to-move)
+      // Left click = fire hook toward mouse
       this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
         this.soundManager.tryResume();
         if (pointer.rightButtonDown()) {
-          this.rightMouseDown = true;
+          this.moveTargetX = pointer.worldX;
+          this.moveTargetY = pointer.worldY;
+          this.hasMovetarget = true;
         }
         if (pointer.leftButtonDown()) {
           this.wantHook = true;
-        }
-      });
-
-      this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
-        if (!pointer.rightButtonDown()) {
-          this.rightMouseDown = false;
         }
       });
 
@@ -356,18 +355,21 @@ export class GameScene extends Phaser.Scene {
       // One-shot: reset after reading
       if (this.touchControls.wantHook) this.touchControls.wantHook = false;
     } else {
-      // Desktop: right-click movement
-      if (this.rightMouseDown && !this.localPlayerDead) {
+      // Desktop: click-to-move (Dota style)
+      if (this.hasMovetarget && !this.localPlayerDead) {
         const mySprite = this.players.get(this.myId);
         if (mySprite) {
-          // Calculate direction from player to mouse
-          const pdx = this.mouseWorldX - mySprite.container.x;
-          const pdy = this.mouseWorldY - mySprite.container.y;
+          const pdx = this.moveTargetX - mySprite.container.x;
+          const pdy = this.moveTargetY - mySprite.container.y;
           const dist = Math.sqrt(pdx * pdx + pdy * pdy);
 
-          if (dist > 5) { // Dead zone - stop when close enough
-            dx = pdx / dist; // Normalized direction
+          if (dist > 8) {
+            // Walk toward destination
+            dx = pdx / dist;
             dy = pdy / dist;
+          } else {
+            // Arrived at destination
+            this.hasMovetarget = false;
           }
         }
       }
@@ -495,20 +497,13 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    // Move indicator for right-click movement (desktop only)
+    // Move indicator: show destination marker
     this.moveIndicator.clear();
-    if (this.rightMouseDown && !this.localPlayerDead && !this.touchControls) {
-      this.moveIndicator.lineStyle(1.5, 0xffd93d, 0.4);
-      this.moveIndicator.strokeCircle(this.mouseWorldX, this.mouseWorldY, 8);
-      // Small cross in center
-      this.moveIndicator.lineBetween(
-        this.mouseWorldX - 4, this.mouseWorldY,
-        this.mouseWorldX + 4, this.mouseWorldY
-      );
-      this.moveIndicator.lineBetween(
-        this.mouseWorldX, this.mouseWorldY - 4,
-        this.mouseWorldX, this.mouseWorldY + 4
-      );
+    if (this.hasMovetarget && !this.localPlayerDead && !this.touchControls) {
+      this.moveIndicator.lineStyle(1.5, 0xffd93d, 0.3);
+      this.moveIndicator.strokeCircle(this.moveTargetX, this.moveTargetY, 6);
+      this.moveIndicator.fillStyle(0xffd93d, 0.15);
+      this.moveIndicator.fillCircle(this.moveTargetX, this.moveTargetY, 6);
     }
 
     // Camera: follow player, or free cam when dead
