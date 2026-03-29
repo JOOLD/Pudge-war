@@ -53,3 +53,60 @@ export const COLORS = {
   hookChain: 0xc0c0c0,  // silver chain
   hookHead: 0xe8d44d,   // golden hook tip
 };
+
+// === Gold ===
+export const GOLD_PER_KILL = 100;
+export const GOLD_PER_ASSIST = 50;
+export const GOLD_PASSIVE_RATE = 5; // gold per second
+export const ASSIST_WINDOW = 10000; // ms
+
+// === Rot ===
+export const ROT_DAMAGE = 30; // damage per second
+export const ROT_RADIUS = 120;
+export const ROT_SELF_DAMAGE = 15; // damage per second to self
+export const ROT_COOLDOWN = 0; // toggle, no cooldown
+
+// === Phase ===
+export const PHASE_DURATION = 2000; // ms
+export const PHASE_COOLDOWN = 12000; // ms
+export const PHASE_SPEED_MULT = 1.5;
+
+// === Dismember ===
+export const DISMEMBER_DAMAGE = 80; // damage per second
+export const DISMEMBER_DURATION = 3000; // ms
+export const DISMEMBER_COOLDOWN = 30000; // ms
+export const DISMEMBER_RANGE = 150; // must be close
+
+// === Spawn healing ===
+export const SPAWN_HEAL_RADIUS = 150;
+export const SPAWN_HEAL_RATE = 20; // hp per second
+
+// === Upgrades ===
+export interface UpgradeDef {
+  id: string;
+  name: string;
+  description: string;
+  baseCost: number;
+  maxLevel: number;
+  costMultiplier: number; // price increases by this factor per level
+}
+
+export const UPGRADES: UpgradeDef[] = [
+  // Hook upgrades
+  { id: 'hook_range', name: '射程強化', description: '射程 +50', baseCost: 100, maxLevel: 3, costMultiplier: 1.5 },
+  { id: 'hook_speed', name: '鉤速強化', description: '速度 +100', baseCost: 100, maxLevel: 3, costMultiplier: 1.5 },
+  { id: 'hook_cooldown', name: '冷卻縮減', description: '冷卻 -1秒', baseCost: 150, maxLevel: 3, costMultiplier: 1.5 },
+  // Rot upgrades
+  { id: 'rot_damage', name: '腐蝕強化', description: '傷害 +10/s', baseCost: 100, maxLevel: 3, costMultiplier: 1.5 },
+  { id: 'rot_radius', name: '腐蝕範圍', description: '範圍 +20', baseCost: 120, maxLevel: 3, costMultiplier: 1.5 },
+  // Phase upgrades
+  { id: 'phase_duration', name: '相位延長', description: '持續 +0.5秒', baseCost: 100, maxLevel: 3, costMultiplier: 1.5 },
+  { id: 'phase_cooldown', name: '相位冷卻', description: '冷卻 -2秒', baseCost: 150, maxLevel: 3, costMultiplier: 1.5 },
+  // Dismember upgrades
+  { id: 'dismember_damage', name: '肢解強化', description: '傷害 +20/s', baseCost: 120, maxLevel: 3, costMultiplier: 1.5 },
+  { id: 'dismember_duration', name: '肢解延長', description: '持續 +0.5秒', baseCost: 150, maxLevel: 3, costMultiplier: 1.5 },
+  // Defense upgrades
+  { id: 'hp_max', name: '生命強化', description: 'HP +100', baseCost: 100, maxLevel: 3, costMultiplier: 1.5 },
+  { id: 'hp_regen', name: '恢復強化', description: '恢復 +5/s', baseCost: 120, maxLevel: 3, costMultiplier: 1.5 },
+  { id: 'move_speed', name: '速度強化', description: '移動 +20', baseCost: 100, maxLevel: 3, costMultiplier: 1.5 },
+];

@@ -42,3 +42,15 @@ export interface GameOverData {
   leftScore: number;
   rightScore: number;
 }
+
+// Messages: Client -> Server (shop)
+export interface BuyMessage {
+  upgradeId: string;
+}
+
+export type UpgradeId =
+  | 'hook_range' | 'hook_speed' | 'hook_cooldown'
+  | 'rot_damage' | 'rot_radius'
+  | 'phase_duration' | 'phase_cooldown'
+  | 'dismember_damage' | 'dismember_duration'
+  | 'hp_max' | 'hp_regen' | 'move_speed';

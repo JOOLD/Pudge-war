@@ -27,6 +27,39 @@ export class PlayerSchema extends Schema {
   @type("number") hookCooldown: number = 0; // ms remaining
   @type("number") respawnTimer: number = 0; // ms remaining
   @type("number") spawnIndex: number = 0;
+
+  // Gold & assists
+  @type("number") gold: number = 0;
+  @type("number") assists: number = 0;
+
+  // Rot state
+  @type("boolean") rotActive: boolean = false;
+  @type("number") rotCooldown: number = 0;
+
+  // Phase state
+  @type("boolean") phaseActive: boolean = false;
+  @type("number") phaseTimer: number = 0;
+  @type("number") phaseCooldown: number = 0;
+
+  // Dismember state
+  @type("boolean") dismemberActive: boolean = false;
+  @type("number") dismemberTimer: number = 0;
+  @type("number") dismemberCooldown: number = 0;
+  @type("string") dismemberTargetId: string = "";
+
+  // Upgrade levels
+  @type("number") upgradeHookRange: number = 0;
+  @type("number") upgradeHookSpeed: number = 0;
+  @type("number") upgradeHookCooldown: number = 0;
+  @type("number") upgradeRotDamage: number = 0;
+  @type("number") upgradeRotRadius: number = 0;
+  @type("number") upgradePhaseDuration: number = 0;
+  @type("number") upgradePhaseCooldown: number = 0;
+  @type("number") upgradeDismemberDamage: number = 0;
+  @type("number") upgradeDismemberDuration: number = 0;
+  @type("number") upgradeHpMax: number = 0;
+  @type("number") upgradeHpRegen: number = 0;
+  @type("number") upgradeMoveSpeed: number = 0;
 }
 
 export class GameState extends Schema {
