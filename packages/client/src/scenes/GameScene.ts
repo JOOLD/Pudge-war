@@ -1,11 +1,26 @@
 import Phaser from "phaser";
 import { Room } from "colyseus.js";
-import { getRoom, sendInput } from "../network/client";
+import { getRoom, sendInput, sendBuy } from "../network/client";
 import { generateAssets } from "./AssetGenerator";
 import {
   COLORS, MAP_WIDTH, MAP_HEIGHT, PLAYER_RADIUS,
   HOOK_COOLDOWN, TEAM_LEFT, TEAM_RIGHT,
+  SPAWN_X_LEFT, SPAWN_X_RIGHT,
 } from "shared";
+import type { HookModifier } from "shared";
+import { ShopUI } from "../ui/ShopUI";
+import { SkillBar } from "../ui/SkillBar";
+
+// Map hook modifier to chain color
+function getHookModColor(modifier: string): number {
+  switch (modifier as HookModifier) {
+    case 'flame': return 0xff6600;
+    case 'freeze': return 0x66ccff;
+    case 'lifesteal': return 0xff3333;
+    case 'rupture': return 0x9933ff;
+    default: return COLORS.hookChain;
+  }
+}
 
 interface PlayerSprite {
   container: Phaser.GameObjects.Container;
@@ -22,6 +37,8 @@ interface PlayerSprite {
   targetY: number;
   serverAlive: boolean;
   serverTeam: number;
+  // Hook modifier color
+  hookModColor: number;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -38,6 +55,9 @@ export class GameScene extends Phaser.Scene {
   private mouseWorldY: number = 0;
   private wantHook: boolean = false;
   private scoreText!: Phaser.GameObjects.Text;
+  private shopUI!: ShopUI;
+  private skillBar!: SkillBar;
+  private goldText!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: "GameScene" });
@@ -86,6 +106,38 @@ export class GameScene extends Phaser.Scene {
       };
     }
 
+    // Shop UI
+    this.shopUI = new ShopUI((upgradeId: string) => {
+      sendBuy(upgradeId);
+    });
+
+    // Skill bar
+    this.skillBar = new SkillBar();
+
+    // Gold display (in-game HUD)
+    this.goldText = this.add.text(MAP_WIDTH / 2, 48, '💰 0', {
+      fontFamily: 'Nunito, sans-serif',
+      fontSize: '16px',
+      fontStyle: 'bold',
+      color: '#ffd93d',
+      stroke: '#333333',
+      strokeThickness: 3,
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
+
+    // B key to toggle shop (only near spawn)
+    if (this.input.keyboard) {
+      this.input.keyboard.addKey("B").on("down", () => {
+        const myPlayer = this.room.state.players.get(this.myId) as any;
+        if (!myPlayer || !myPlayer.alive) return;
+        // Check if near spawn
+        const spawnX = myPlayer.team === TEAM_LEFT ? SPAWN_X_LEFT : SPAWN_X_RIGHT;
+        const dist = Math.abs(myPlayer.x - spawnX);
+        if (dist < 150) {
+          this.shopUI.toggle();
+        }
+      });
+    }
+
     // Mouse
     this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
       this.mouseWorldX = pointer.worldX;
@@ -116,6 +168,19 @@ export class GameScene extends Phaser.Scene {
     this.room.onMessage("hookHit", (data: any) => {
       // Play hook hit effect
       this.cameras.main.shake(100, 0.005);
+    });
+
+    // Ability purchased notification
+    this.room.onMessage("abilityPurchased", (data: any) => {
+      if (data.sessionId === this.myId) {
+        if (data.ability === 'rot') this.skillBar.setSkillLocked('rot', false);
+        if (data.ability === 'phase') this.skillBar.setSkillLocked('phase', false);
+      }
+    });
+
+    // Hook modifier purchased notification
+    this.room.onMessage("hookModPurchased", (_data: any) => {
+      // Visual feedback handled by schema listener
     });
 
     // Game over
@@ -155,6 +220,24 @@ export class GameScene extends Phaser.Scene {
     this.scoreText.setText(
       `${this.room.state.leftScore} : ${this.room.state.rightScore}`
     );
+
+    // Update gold display and shop state
+    const myPlayer = this.room.state.players.get(this.myId) as any;
+    if (myPlayer) {
+      this.goldText.setText(`💰 ${myPlayer.gold}`);
+      this.shopUI.updatePlayerState(
+        myPlayer.gold,
+        myPlayer.hasRot,
+        myPlayer.hasPhase,
+        myPlayer.hookModifier
+      );
+      // Update skill bar cooldown
+      if (myPlayer.hookCooldown > 0) {
+        this.skillBar.setCooldown('hook', myPlayer.hookCooldown / HOOK_COOLDOWN);
+      } else {
+        this.skillBar.setCooldown('hook', 0);
+      }
+    }
 
     // Update all player sprites with interpolation
     this.players.forEach((sprite, id) => {
@@ -237,6 +320,7 @@ export class GameScene extends Phaser.Scene {
       targetY: player.y,
       serverAlive: player.alive,
       serverTeam: player.team,
+      hookModColor: COLORS.hookChain,
     };
 
     this.players.set(sessionId, spriteData);
@@ -245,6 +329,21 @@ export class GameScene extends Phaser.Scene {
     player.listen("x", (value: number) => { spriteData.targetX = value; });
     player.listen("y", (value: number) => { spriteData.targetY = value; });
     player.listen("alive", (value: boolean) => { spriteData.serverAlive = value; });
+
+    // Listen for hook modifier changes
+    player.listen("hookModifier", (value: string) => {
+      spriteData.hookModColor = getHookModColor(value);
+    });
+
+    // Listen for skill purchase state (for local player skill bar)
+    if (sessionId === this.myId) {
+      player.listen("hasRot", (value: boolean) => {
+        this.skillBar.setSkillLocked('rot', !value);
+      });
+      player.listen("hasPhase", (value: boolean) => {
+        this.skillBar.setSkillLocked('phase', !value);
+      });
+    }
 
     player.listen("hp", (value: number) => {
       const pct = value / 100;
@@ -275,8 +374,9 @@ export class GameScene extends Phaser.Scene {
       const hx = hookSchema.x - spriteData.container.x;
       const hy = hookSchema.y - spriteData.container.y;
 
-      // Draw chain
-      spriteData.hookChainGfx.lineStyle(3, COLORS.hookChain, 0.8);
+      // Draw chain (color based on hook modifier)
+      const chainColor = spriteData.hookModColor;
+      spriteData.hookChainGfx.lineStyle(3, chainColor, 0.8);
       spriteData.hookChainGfx.beginPath();
       spriteData.hookChainGfx.moveTo(0, 0);
       spriteData.hookChainGfx.lineTo(hx, hy);
@@ -285,7 +385,7 @@ export class GameScene extends Phaser.Scene {
       // Draw chain links along the line
       const dist = Math.sqrt(hx * hx + hy * hy);
       const steps = Math.floor(dist / 12);
-      spriteData.hookChainGfx.fillStyle(COLORS.hookChain, 1);
+      spriteData.hookChainGfx.fillStyle(chainColor, 1);
       for (let i = 1; i < steps; i++) {
         const t = i / steps;
         spriteData.hookChainGfx.fillCircle(hx * t, hy * t, 2);

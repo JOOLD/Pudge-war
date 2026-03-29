@@ -3,14 +3,16 @@ import { GameState, PlayerSchema, HookSchema } from "./schema";
 import {
   TICK_RATE, KILLS_TO_WIN, MAX_PLAYERS, MAX_PLAYERS_PER_TEAM,
   TEAM_LEFT, TEAM_RIGHT, PLAYER_MAX_HP, HOOK_COOLDOWN,
-  RESPAWN_TIME, HOOK_RADIUS, PLAYER_RADIUS,
+  RESPAWN_TIME, HOOK_RADIUS, PLAYER_RADIUS, HOOK_DAMAGE,
   SPAWN_X_LEFT, SPAWN_X_RIGHT, SPAWN_Y_OFFSETS,
   MAP_HEIGHT,
+  HOOK_MODIFIERS,
 } from "shared";
+import type { HookModifier } from "shared";
 import { InputMessage, HookState, GamePhase } from "shared";
 import {
   movePlayer, moveHook, pullTarget, returnHook,
-  circleCollision, normalize,
+  circleCollision, normalize, distance,
 } from "../physics/collision";
 
 export class PudgeRoom extends Room<GameState> {
@@ -44,6 +46,38 @@ export class PudgeRoom extends Room<GameState> {
     this.onMessage("restart", () => {
       if (this.state.phase === GamePhase.FINISHED) {
         this.restartGame();
+      }
+    });
+
+    // Handle shop purchases
+    this.onMessage("buy", (client, msg: { upgradeId: string }) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player || !player.alive) return;
+
+      // Ability purchases
+      if (msg.upgradeId === 'rot') {
+        if (player.hasRot || player.gold < 200) return;
+        player.gold -= 200;
+        player.hasRot = true;
+        this.broadcast("abilityPurchased", { nickname: player.nickname, ability: 'rot', sessionId: client.sessionId });
+        return;
+      }
+      if (msg.upgradeId === 'phase') {
+        if (player.hasPhase || player.gold < 300) return;
+        player.gold -= 300;
+        player.hasPhase = true;
+        this.broadcast("abilityPurchased", { nickname: player.nickname, ability: 'phase', sessionId: client.sessionId });
+        return;
+      }
+
+      // Hook modifier purchases
+      const hookMod = HOOK_MODIFIERS.find(m => m.id === msg.upgradeId);
+      if (hookMod) {
+        if (player.gold < hookMod.cost) return;
+        player.gold -= hookMod.cost;
+        player.hookModifier = hookMod.id;
+        this.broadcast("hookModPurchased", { nickname: player.nickname, modifier: hookMod.id, sessionId: client.sessionId });
+        return;
       }
     });
 
@@ -125,6 +159,16 @@ export class PudgeRoom extends Room<GameState> {
       player.hookCooldown = 0;
       player.respawnTimer = 0;
       player.hook.state = "idle";
+      // Reset skill purchase state
+      player.hasRot = false;
+      player.hasPhase = false;
+      player.hookModifier = "none";
+      player.gold = 0;
+      // Reset effect timers
+      player.burnTimer = 0;
+      player.burnDamage = 0;
+      player.slowTimer = 0;
+      player.slowPercent = 0;
       this.respawnPlayer(player);
     });
 
@@ -182,6 +226,38 @@ export class PudgeRoom extends Room<GameState> {
         if (player.hookCooldown < 0) player.hookCooldown = 0;
       }
 
+      // Process burn damage over time
+      if (player.burnTimer > 0) {
+        player.hp -= player.burnDamage * dt;
+        player.burnTimer -= (1000 / TICK_RATE);
+        if (player.burnTimer <= 0) {
+          player.burnTimer = 0;
+          player.burnDamage = 0;
+        }
+        // Check death from burn
+        if (player.hp <= 0) {
+          player.alive = false;
+          player.hp = 0;
+          player.deaths++;
+          player.respawnTimer = RESPAWN_TIME;
+          this.broadcast("kill", {
+            killerName: "burn",
+            victimName: player.nickname,
+            killerTeam: -1,
+          });
+          return;
+        }
+      }
+
+      // Process slow timer
+      if (player.slowTimer > 0) {
+        player.slowTimer -= (1000 / TICK_RATE);
+        if (player.slowTimer <= 0) {
+          player.slowTimer = 0;
+          player.slowPercent = 0;
+        }
+      }
+
       const input = this.playerInputs.get(sessionId);
       if (!input) return;
 
@@ -191,7 +267,9 @@ export class PudgeRoom extends Room<GameState> {
 
       // Move player (only if not being pulled)
       if (player.hook.state !== "hit" || player.hook.targetId !== sessionId) {
-        const pos = movePlayer(player.x, player.y, input.dx, input.dy, player.team, dt);
+        // Apply slow effect by reducing effective dt
+        const effectiveDt = player.slowPercent > 0 ? dt * (1 - player.slowPercent) : dt;
+        const pos = movePlayer(player.x, player.y, input.dx, input.dy, player.team, effectiveDt);
         player.x = pos.x;
         player.y = pos.y;
       }
@@ -295,28 +373,63 @@ export class PudgeRoom extends Room<GameState> {
         hook.y = target.y;
 
         if (pullResult.arrived) {
-          // Kill the target
-          target.alive = false;
-          target.hp = 0;
-          target.deaths++;
-          target.respawnTimer = RESPAWN_TIME;
-          player.kills++;
+          // Apply base hook damage
+          target.hp -= HOOK_DAMAGE;
 
-          // Update score
-          if (player.team === TEAM_LEFT) {
-            this.state.leftScore++;
-          } else {
-            this.state.rightScore++;
+          // Apply hook modifier effects
+          switch (player.hookModifier as HookModifier) {
+            case 'flame':
+              target.burnTimer = 3000;
+              target.burnDamage = 20;
+              break;
+            case 'freeze':
+              target.slowTimer = 3000;
+              target.slowPercent = 0.5;
+              break;
+            case 'lifesteal': {
+              const healAmount = HOOK_DAMAGE * 0.3;
+              player.hp = Math.min(player.hp + healAmount, PLAYER_MAX_HP);
+              break;
+            }
+            case 'rupture': {
+              // Extra damage based on pull distance
+              const pullDist = distance(
+                { x: hook.startX, y: hook.startY },
+                { x: target.x, y: target.y }
+              );
+              const extraDmg = Math.floor(pullDist / 10);
+              target.hp -= extraDmg;
+              break;
+            }
+          }
+
+          // Check if target died
+          if (target.hp <= 0) {
+            target.alive = false;
+            target.hp = 0;
+            target.deaths++;
+            target.respawnTimer = RESPAWN_TIME;
+            player.kills++;
+
+            // Award gold for kill
+            player.gold += 150;
+
+            // Update score
+            if (player.team === TEAM_LEFT) {
+              this.state.leftScore++;
+            } else {
+              this.state.rightScore++;
+            }
+
+            this.broadcast("kill", {
+              killerName: player.nickname,
+              victimName: target.nickname,
+              killerTeam: player.team,
+            });
           }
 
           hook.state = "idle";
           hook.targetId = "";
-
-          this.broadcast("kill", {
-            killerName: player.nickname,
-            victimName: target.nickname,
-            killerTeam: player.team,
-          });
         }
         break;
       }

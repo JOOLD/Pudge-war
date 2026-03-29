@@ -27,6 +27,17 @@ export class PlayerSchema extends Schema {
   @type("number") hookCooldown: number = 0; // ms remaining
   @type("number") respawnTimer: number = 0; // ms remaining
   @type("number") spawnIndex: number = 0;
+  // Skill purchase state
+  @type("boolean") hasRot: boolean = false;
+  @type("boolean") hasPhase: boolean = false;
+  @type("string") hookModifier: string = "none";
+  // Gold for shop
+  @type("number") gold: number = 0;
+  // Hook modifier effect timers
+  @type("number") burnTimer: number = 0;
+  @type("number") burnDamage: number = 0;
+  @type("number") slowTimer: number = 0;
+  @type("number") slowPercent: number = 0;
 }
 
 export class GameState extends Schema {
