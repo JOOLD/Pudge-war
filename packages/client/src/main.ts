@@ -4,7 +4,9 @@ import {
   createRoom, joinRoom, getRoom, sendStart, sendRestart,
   attemptReconnect, clearReconnectionToken,
 } from "./network/client";
-import { MAP_WIDTH, MAP_HEIGHT, TEAM_LEFT } from "shared";
+import { MAP_WIDTH, MAP_HEIGHT, TEAM_LEFT, SPAWN_X_LEFT, SPAWN_X_RIGHT } from "shared";
+import { HUD } from "./ui/HUD";
+import { ShopUI } from "./ui/ShopUI";
 
 // === URL params & module-level state ===
 const urlParams = new URLSearchParams(window.location.search);
@@ -169,6 +171,8 @@ function enterWaitingRoom(room: any) {
     gameOverOverlay.classList.remove("visible");
     shareBar.classList.add("visible");
     game.scene.start("GameScene");
+    // Initialize HUD and Shop UI
+    initGameUI(room);
   });
 
   // Listen for kill messages — pulse share button when current player gets a kill
@@ -313,3 +317,236 @@ nicknameInput.addEventListener("keydown", (e) => {
 roomCodeInput.addEventListener("input", () => {
   roomCodeInput.value = roomCodeInput.value.toUpperCase();
 });
+
+// === HUD & Shop wiring ===
+let hud: HUD | null = null;
+let shopUI: ShopUI | null = null;
+let lastGold = 0;
+// Track per-player alive state for detecting death/respawn transitions
+const playerAliveState: Map<string, boolean> = new Map();
+
+// Distance threshold to consider "near spawn" for shop
+const SHOP_SPAWN_DISTANCE = 150;
+
+function isNearSpawn(room: any): boolean {
+  const player = room.state.players.get(room.sessionId);
+  if (!player || !player.alive) return false;
+  const spawnX = player.team === TEAM_LEFT ? SPAWN_X_LEFT : SPAWN_X_RIGHT;
+  const dx = player.x - spawnX;
+  const dy = player.y - MAP_HEIGHT / 2;
+  return Math.sqrt(dx * dx + dy * dy) < SHOP_SPAWN_DISTANCE;
+}
+
+function initGameUI(room: any) {
+  // Create HUD
+  hud = new HUD();
+  hud.show();
+  lastGold = 0;
+  playerAliveState.clear();
+
+  // Create Shop UI
+  shopUI = new ShopUI(room, room.sessionId);
+
+  // Shop button click
+  const shopBtn = document.getElementById("hud-shop-btn")!;
+  shopBtn.addEventListener("click", () => {
+    if (!shopUI) return;
+    if (isNearSpawn(room)) {
+      shopUI.toggle();
+    }
+  });
+
+  // Keyboard 'B' to toggle shop
+  const onKeyDown = (e: KeyboardEvent) => {
+    if (e.key === "b" || e.key === "B") {
+      if (!shopUI) return;
+      // Don't toggle if typing in an input
+      if (document.activeElement?.tagName === "INPUT") return;
+      if (isNearSpawn(room)) {
+        shopUI.toggle();
+      }
+    }
+    // Escape to close shop
+    if (e.key === "Escape" && shopUI?.isVisible()) {
+      shopUI.hide();
+    }
+  };
+  window.addEventListener("keydown", onKeyDown);
+
+  // Listen for kill messages to track streaks
+  room.onMessage("kill", (data: any) => {
+    if (!hud) return;
+
+    // Record kill for the killer
+    const streak = hud.recordKill(data.killerId || data.killerName);
+
+    // Show streak to the local player if they are the killer
+    const myPlayer = room.state.players.get(room.sessionId);
+    if (myPlayer && (data.killerName === myPlayer.nickname)) {
+      hud.showKillStreak(streak);
+    }
+
+    // Record death for the victim to reset their streak
+    hud.recordDeath(data.victimId || data.victimName);
+  });
+
+  // Track player state changes for death/respawn, gold, timer
+  const updateLoop = setInterval(() => {
+    if (!hud) { clearInterval(updateLoop); return; }
+    const r = getRoom();
+    if (!r) { clearInterval(updateLoop); return; }
+
+    // Update timer from gameTime if available, otherwise estimate from state
+    const gameTime = (r.state as any).gameTime;
+    if (gameTime !== undefined) {
+      hud.updateTimer(gameTime);
+    }
+
+    // Get local player
+    const me = r.state.players.get(r.sessionId);
+    if (!me) return;
+
+    // Update gold
+    const gold = (me as any).gold ?? 0;
+    if (gold !== lastGold) {
+      const delta = gold - lastGold;
+      hud.updateGold(gold, delta);
+      lastGold = gold;
+
+      // Bounce animation on gold display
+      const goldEl = document.getElementById("hud-gold");
+      if (goldEl) {
+        goldEl.classList.add("bounce");
+        setTimeout(() => goldEl.classList.remove("bounce"), 200);
+      }
+    }
+
+    // Update shop button state (near spawn or not)
+    hud.setShopEnabled(isNearSpawn(r));
+
+    // Update shop if visible
+    if (shopUI?.isVisible()) {
+      const upgrades: Record<string, number> = {};
+      // Read upgrades from player state if available
+      const playerUpgrades = (me as any).upgrades;
+      if (playerUpgrades) {
+        if (typeof playerUpgrades.forEach === "function") {
+          playerUpgrades.forEach((val: number, key: string) => {
+            upgrades[key] = val;
+          });
+        } else if (typeof playerUpgrades === "object") {
+          Object.assign(upgrades, playerUpgrades);
+        }
+      }
+      shopUI.update(gold, upgrades);
+    }
+
+    // Detect death/respawn transitions
+    r.state.players.forEach((player: any, id: string) => {
+      const wasAlive = playerAliveState.get(id);
+      const isAlive = player.alive;
+
+      if (wasAlive !== undefined && wasAlive !== isAlive) {
+        if (!isAlive && id === r.sessionId) {
+          // Local player died
+          const respawnMs = player.respawnTimer || 3000;
+          hud!.showDeathScreen(respawnMs);
+          hud!.recordDeath(id);
+        } else if (isAlive && id === r.sessionId) {
+          // Local player respawned
+          hud!.hideDeathScreen();
+        }
+      }
+
+      playerAliveState.set(id, isAlive);
+    });
+  }, 100);
+
+  // Listen for upgrade purchased confirmation
+  room.onMessage("upgrade", (data: any) => {
+    // Show brief notification
+    const notif = document.createElement("div");
+    notif.className = "kill-entry";
+    notif.textContent = `✅ ${data.name || data.upgradeId} 升級！`;
+    const feed = document.getElementById("kill-feed")!;
+    feed.appendChild(notif);
+    setTimeout(() => {
+      notif.style.opacity = "0";
+      notif.style.transition = "opacity 0.5s";
+      setTimeout(() => notif.remove(), 500);
+    }, 2000);
+  });
+
+  // Handle game over with scoreboard
+  room.onMessage("gameOver", (data: any) => {
+    // Populate scoreboard
+    const rows = document.getElementById("scoreboard-rows")!;
+    rows.innerHTML = "";
+
+    const mvpDisplay = document.getElementById("mvp-display")!;
+    let mvpName = "";
+    let mvpKills = -1;
+
+    // Collect all players
+    const playersList: any[] = [];
+    room.state.players.forEach((player: any) => {
+      playersList.push({
+        nickname: player.nickname,
+        team: player.team,
+        kills: player.kills || 0,
+        deaths: player.deaths || 0,
+        assists: (player as any).assists || 0,
+        gold: (player as any).gold || 0,
+      });
+    });
+
+    // Sort by kills desc
+    playersList.sort((a: any, b: any) => b.kills - a.kills);
+
+    // Find MVP (highest kills)
+    if (playersList.length > 0) {
+      mvpName = playersList[0].nickname;
+      mvpKills = playersList[0].kills;
+    }
+
+    for (const p of playersList) {
+      const row = document.createElement("div");
+      row.className = "scoreboard-row";
+      if (p.team === TEAM_LEFT) row.classList.add("team-left");
+      else row.classList.add("team-right");
+      if (p.nickname === mvpName) row.classList.add("mvp-row");
+
+      row.innerHTML = `
+        <span>${p.team === TEAM_LEFT ? "🌿" : "🌸"} ${p.nickname}</span>
+        <span>${p.kills}</span>
+        <span>${p.deaths}</span>
+        <span>${p.assists}</span>
+        <span>${p.gold}</span>
+      `;
+      rows.appendChild(row);
+    }
+
+    if (mvpName) {
+      mvpDisplay.textContent = `🏆 MVP: ${mvpName} (${mvpKills} kills)`;
+    } else {
+      mvpDisplay.textContent = "";
+    }
+
+    // Clean up HUD
+    if (hud) {
+      hud.hide();
+    }
+    if (shopUI) {
+      shopUI.hide();
+    }
+  });
+
+  // Cleanup when game restarts — re-show HUD
+  room.onMessage("gameStarted", () => {
+    if (hud) {
+      hud.show();
+      lastGold = 0;
+      playerAliveState.clear();
+    }
+  });
+}

@@ -69,6 +69,9 @@ export class GameScene extends Phaser.Scene {
   private soundManager!: SoundManager;
   private touchControls: TouchControls | null = null;
   private skillBar!: SkillBar;
+  private localPlayerDead: boolean = false;
+  private freeCamX: number = 0;
+  private freeCamY: number = 0;
 
   constructor() {
     super({ key: "GameScene" });
@@ -243,6 +246,7 @@ export class GameScene extends Phaser.Scene {
     if (!this.room) return;
 
     // Read input from touch controls or keyboard
+    // Skip movement input when dead — WASD controls free cam instead
     let dx = 0, dy = 0;
     let aimX = this.mouseWorldX;
     let aimY = this.mouseWorldY;
@@ -250,26 +254,28 @@ export class GameScene extends Phaser.Scene {
 
     if (this.touchControls) {
       this.touchControls.update();
-      dx = this.touchControls.dx;
-      dy = this.touchControls.dy;
+      if (!this.localPlayerDead) {
+        dx = this.touchControls.dx;
+        dy = this.touchControls.dy;
+      }
       aimX = this.touchControls.aimX;
       aimY = this.touchControls.aimY;
-      hook = this.touchControls.wantHook;
+      hook = this.localPlayerDead ? false : this.touchControls.wantHook;
       // One-shot: reset after reading
-      if (hook) this.touchControls.wantHook = false;
+      if (this.touchControls.wantHook) this.touchControls.wantHook = false;
     } else {
-      if (this.keys) {
+      if (this.keys && !this.localPlayerDead) {
         if (this.keys.A.isDown) dx -= 1;
         if (this.keys.D.isDown) dx += 1;
         if (this.keys.W.isDown) dy -= 1;
         if (this.keys.S.isDown) dy += 1;
       }
-      hook = this.wantHook;
+      hook = this.localPlayerDead ? false : this.wantHook;
       this.wantHook = false;
     }
 
-    // Skill key presses (desktop only)
-    if (this.skillKeys) {
+    // Skill key presses (desktop only, not when dead)
+    if (this.skillKeys && !this.localPlayerDead) {
       if (Phaser.Input.Keyboard.JustDown(this.skillKeys.Q)) {
         this.wantHook = true;
       }
@@ -361,10 +367,25 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
-    // Camera follow my player
-    const mySprite = this.players.get(this.myId);
-    if (mySprite) {
-      this.cameras.main.centerOn(mySprite.container.x, mySprite.container.y);
+    // Camera: follow player, or free cam when dead
+    if (this.localPlayerDead) {
+      // Free camera movement with WASD while dead
+      const camSpeed = 300 * (delta / 1000);
+      if (this.keys) {
+        if (this.keys.A.isDown) this.freeCamX -= camSpeed;
+        if (this.keys.D.isDown) this.freeCamX += camSpeed;
+        if (this.keys.W.isDown) this.freeCamY -= camSpeed;
+        if (this.keys.S.isDown) this.freeCamY += camSpeed;
+      }
+      // Clamp to map bounds
+      this.freeCamX = Math.max(0, Math.min(MAP_WIDTH, this.freeCamX));
+      this.freeCamY = Math.max(0, Math.min(MAP_HEIGHT, this.freeCamY));
+      this.cameras.main.centerOn(this.freeCamX, this.freeCamY);
+    } else {
+      const mySprite = this.players.get(this.myId);
+      if (mySprite) {
+        this.cameras.main.centerOn(mySprite.container.x, mySprite.container.y);
+      }
     }
   }
 
@@ -453,9 +474,22 @@ export class GameScene extends Phaser.Scene {
       const wasAlive = spriteData.serverAlive;
       spriteData.serverAlive = value;
 
-      // Respawn sound: dead -> alive, only for local player
-      if (!wasAlive && value && sessionId === this.myId) {
-        this.soundManager.playRespawn();
+      // Track local player death/respawn for camera, grayscale, and sound
+      if (sessionId === this.myId) {
+        if (!value && !this.localPlayerDead) {
+          // Player just died — enable free cam from current position
+          this.localPlayerDead = true;
+          this.freeCamX = spriteData.container.x;
+          this.freeCamY = spriteData.container.y;
+        } else if (value && this.localPlayerDead) {
+          // Player respawned — re-lock camera
+          this.localPlayerDead = false;
+        }
+
+        // Respawn sound: dead -> alive
+        if (!wasAlive && value) {
+          this.soundManager.playRespawn();
+        }
       }
     });
 
