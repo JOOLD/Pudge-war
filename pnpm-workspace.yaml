@@ -2,3 +2,4 @@ packages:
   - "packages/*"
 allowBuilds:
   msgpackr-extract: false
+  esbuild: true

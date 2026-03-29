@@ -12,6 +12,7 @@ import {
   movePlayer, moveHook, pullTarget, returnHook,
   circleCollision, normalize,
 } from "../physics/collision";
+import { logEvent } from "../analytics";
 
 export class PudgeRoom extends Room<GameState> {
   private tickInterval!: ReturnType<typeof setInterval>;
@@ -76,6 +77,9 @@ export class PudgeRoom extends Room<GameState> {
 
     this.state.players.set(client.sessionId, player);
 
+    // Log analytics event
+    logEvent({ type: 'join', sessionId: client.sessionId, ref: options.ref, payload: { nickname: player.nickname, team: player.team } });
+
     // Broadcast join
     this.broadcast("playerJoined", {
       nickname: player.nickname,
@@ -91,6 +95,8 @@ export class PudgeRoom extends Room<GameState> {
 
       // Release any hooked players
       this.releaseHookedTarget(player);
+
+      logEvent({ type: 'session_end', sessionId: client.sessionId, payload: { nickname: player.nickname } });
 
       this.state.players.delete(client.sessionId);
       this.broadcast("playerLeft", { nickname: player.nickname });
@@ -128,6 +134,7 @@ export class PudgeRoom extends Room<GameState> {
       this.respawnPlayer(player);
     });
 
+    logEvent({ type: 'game_start', sessionId: 'room', payload: { playerCount: this.clients.length, roomCode: this.state.roomCode } });
     this.broadcast("gameStarted", {});
   }
 
@@ -152,10 +159,7 @@ export class PudgeRoom extends Room<GameState> {
 
   private releaseHookedTarget(owner: PlayerSchema) {
     if (owner.hook.state === "hit" && owner.hook.targetId) {
-      const target = this.state.players.get(owner.hook.targetId);
-      if (target) {
-        // Just release, don't teleport
-      }
+      // Release hook without teleporting target
       owner.hook.state = "idle";
       owner.hook.targetId = "";
     }
@@ -209,6 +213,7 @@ export class PudgeRoom extends Room<GameState> {
         leftScore: this.state.leftScore,
         rightScore: this.state.rightScore,
       });
+      logEvent({ type: 'game_end', sessionId: 'room', payload: { winningTeam: TEAM_LEFT, leftScore: this.state.leftScore, rightScore: this.state.rightScore, roomCode: this.state.roomCode } });
     } else if (this.state.rightScore >= KILLS_TO_WIN) {
       this.state.phase = GamePhase.FINISHED;
       this.state.winningTeam = TEAM_RIGHT;
@@ -217,6 +222,7 @@ export class PudgeRoom extends Room<GameState> {
         leftScore: this.state.leftScore,
         rightScore: this.state.rightScore,
       });
+      logEvent({ type: 'game_end', sessionId: 'room', payload: { winningTeam: TEAM_RIGHT, leftScore: this.state.leftScore, rightScore: this.state.rightScore, roomCode: this.state.roomCode } });
     }
   }
 
@@ -317,6 +323,8 @@ export class PudgeRoom extends Room<GameState> {
             victimName: target.nickname,
             killerTeam: player.team,
           });
+
+          logEvent({ type: 'kill', sessionId: player.id, payload: { killer: player.nickname, victim: target.nickname, killerTeam: player.team } });
         }
         break;
       }
