@@ -47,6 +47,18 @@ export class PudgeRoom extends Room<GameState> {
       }
     });
 
+    // Handle skill messages
+    this.onMessage("skill", (client, msg: { skill: string }) => {
+      const player = this.state.players.get(client.sessionId);
+      if (!player || !player.alive) return;
+
+      switch (msg.skill) {
+        case "rot": this.toggleRot(player); break;
+        case "phase": this.activatePhase(player); break;
+        case "dismember": this.activateDismember(player); break;
+      }
+    });
+
     // Start game loop
     this.tickInterval = setInterval(() => this.gameLoop(), 1000 / TICK_RATE);
   }
@@ -125,6 +137,12 @@ export class PudgeRoom extends Room<GameState> {
       player.hookCooldown = 0;
       player.respawnTimer = 0;
       player.hook.state = "idle";
+      player.rotActive = false;
+      player.phaseTimer = 0;
+      player.phaseCooldown = 0;
+      player.dismemberTimer = 0;
+      player.dismemberTarget = "";
+      player.dismemberCooldown = 0;
       this.respawnPlayer(player);
     });
 
@@ -148,6 +166,10 @@ export class PudgeRoom extends Room<GameState> {
     player.hp = PLAYER_MAX_HP;
     player.alive = true;
     player.hook.state = "idle";
+    player.rotActive = false;
+    player.phaseTimer = 0;
+    player.dismemberTimer = 0;
+    player.dismemberTarget = "";
   }
 
   private releaseHookedTarget(owner: PlayerSchema) {
@@ -189,8 +211,26 @@ export class PudgeRoom extends Room<GameState> {
       player.aimX = input.aimX;
       player.aimY = input.aimY;
 
-      // Move player (only if not being pulled)
-      if (player.hook.state !== "hit" || player.hook.targetId !== sessionId) {
+      // Process skill timers
+      this.processRot(player, dt);
+      this.processPhase(player, dt);
+      this.processDismember(player, sessionId, dt);
+
+      // Check if this player is a dismember target (frozen in place)
+      let isDismemberTarget = false;
+      this.state.players.forEach((other) => {
+        if (other.dismemberTimer > 0 && other.dismemberTarget === sessionId) {
+          isDismemberTarget = true;
+        }
+      });
+
+      // Move player (only if not being pulled, not phased, not dismembering/dismembered)
+      if (
+        (player.hook.state !== "hit" || player.hook.targetId !== sessionId) &&
+        player.phaseTimer <= 0 &&
+        player.dismemberTimer <= 0 &&
+        !isDismemberTarget
+      ) {
         const pos = movePlayer(player.x, player.y, input.dx, input.dy, player.team, dt);
         player.x = pos.x;
         player.y = pos.y;
@@ -262,6 +302,7 @@ export class PudgeRoom extends Room<GameState> {
           if (otherId === player.id) return;
           if (other.team === player.team) return;
           if (!other.alive) return;
+          if (other.phaseTimer > 0) return; // Phase shift = immune to hooks
 
           if (circleCollision(
             { x: hook.x, y: hook.y }, HOOK_RADIUS,
@@ -331,6 +372,190 @@ export class PudgeRoom extends Room<GameState> {
         }
         break;
       }
+    }
+  }
+
+  // ============================================================
+  // Skill: Rot (W) — Toggle AOE damage around self
+  // ============================================================
+  private toggleRot(player: PlayerSchema) {
+    player.rotActive = !player.rotActive;
+  }
+
+  private processRot(player: PlayerSchema, dt: number) {
+    if (!player.rotActive || !player.alive) return;
+
+    // Self damage: 10 HP/sec
+    player.hp -= 10 * dt;
+    if (player.hp <= 0) {
+      player.alive = false;
+      player.hp = 0;
+      player.deaths++;
+      player.respawnTimer = RESPAWN_TIME;
+      player.rotActive = false;
+      this.broadcast("kill", {
+        killerName: player.nickname,
+        victimName: player.nickname,
+        killerTeam: player.team,
+        suicide: true,
+      });
+      return;
+    }
+
+    // Damage nearby enemies: 30 HP/sec in 80px radius
+    this.state.players.forEach((other, otherId) => {
+      if (otherId === player.id) return;
+      if (other.team === player.team) return;
+      if (!other.alive) return;
+      if (other.phaseTimer > 0) return; // Phase shift = immune
+
+      const dx = other.x - player.x;
+      const dy = other.y - player.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+
+      if (dist < 80) {
+        other.hp -= 30 * dt;
+        if (other.hp <= 0) {
+          other.alive = false;
+          other.hp = 0;
+          other.deaths++;
+          other.respawnTimer = RESPAWN_TIME;
+          player.kills++;
+
+          if (player.team === TEAM_LEFT) {
+            this.state.leftScore++;
+          } else {
+            this.state.rightScore++;
+          }
+
+          this.broadcast("kill", {
+            killerName: player.nickname,
+            victimName: other.nickname,
+            killerTeam: player.team,
+          });
+        }
+      }
+    });
+  }
+
+  // ============================================================
+  // Skill: Phase Shift (E) — Invulnerability, cannot move
+  // ============================================================
+  private activatePhase(player: PlayerSchema) {
+    if (player.phaseCooldown > 0) return;
+    if (player.dismemberTimer > 0) return; // Can't phase during dismember
+
+    player.phaseTimer = 1000;      // PHASE_DURATION: 1s
+    player.phaseCooldown = 12000;  // PHASE_COOLDOWN: 12s
+    player.rotActive = false;      // Cancel rot during phase
+
+    // Release any hook targeting this player
+    this.state.players.forEach((other) => {
+      if (other.hook.targetId === player.id && other.hook.state === "hit") {
+        other.hook.state = "returning";
+        other.hook.targetId = "";
+      }
+    });
+
+    this.broadcast("phaseShift", { nickname: player.nickname });
+  }
+
+  private processPhase(player: PlayerSchema, dt: number) {
+    if (player.phaseTimer > 0) {
+      player.phaseTimer -= 1000 / TICK_RATE;
+      if (player.phaseTimer <= 0) player.phaseTimer = 0;
+    }
+    if (player.phaseCooldown > 0) {
+      player.phaseCooldown -= 1000 / TICK_RATE;
+      if (player.phaseCooldown < 0) player.phaseCooldown = 0;
+    }
+  }
+
+  // ============================================================
+  // Skill: Dismember (R) — Channel damage on nearby enemy
+  // ============================================================
+  private activateDismember(player: PlayerSchema) {
+    if (player.dismemberCooldown > 0) return;
+    if (player.phaseTimer > 0) return; // Can't dismember during phase
+
+    // Find closest enemy within 40px
+    let closest: PlayerSchema | null = null;
+    let closestDist = 40;
+
+    this.state.players.forEach((other) => {
+      if (other.id === player.id) return;
+      if (other.team === player.team) return;
+      if (!other.alive) return;
+      if (other.phaseTimer > 0) return;
+
+      const dx = other.x - player.x;
+      const dy = other.y - player.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < closestDist) {
+        closest = other;
+        closestDist = dist;
+      }
+    });
+
+    if (!closest) return; // No target in range
+
+    player.dismemberTimer = 2000;           // DISMEMBER_DURATION: 2s
+    player.dismemberTarget = (closest as PlayerSchema).id;
+    player.dismemberCooldown = 10000;       // DISMEMBER_COOLDOWN: 10s
+
+    this.broadcast("dismember", {
+      attacker: player.nickname,
+      victim: (closest as PlayerSchema).nickname,
+    });
+  }
+
+  private processDismember(player: PlayerSchema, sessionId: string, dt: number) {
+    // Process dismember cooldown regardless
+    if (player.dismemberCooldown > 0) {
+      player.dismemberCooldown -= 1000 / TICK_RATE;
+      if (player.dismemberCooldown < 0) player.dismemberCooldown = 0;
+    }
+
+    if (player.dismemberTimer <= 0) return;
+
+    const target = this.state.players.get(player.dismemberTarget);
+    if (!target || !target.alive) {
+      // Target died or left, cancel dismember
+      player.dismemberTimer = 0;
+      player.dismemberTarget = "";
+      return;
+    }
+
+    // Damage target: 80 HP/sec
+    target.hp -= 80 * dt;
+
+    player.dismemberTimer -= 1000 / TICK_RATE;
+    if (player.dismemberTimer <= 0) {
+      player.dismemberTimer = 0;
+      player.dismemberTarget = "";
+    }
+
+    // Check if target died from dismember
+    if (target.hp <= 0) {
+      target.alive = false;
+      target.hp = 0;
+      target.deaths++;
+      target.respawnTimer = RESPAWN_TIME;
+      player.kills++;
+      player.dismemberTimer = 0;
+      player.dismemberTarget = "";
+
+      if (player.team === TEAM_LEFT) {
+        this.state.leftScore++;
+      } else {
+        this.state.rightScore++;
+      }
+
+      this.broadcast("kill", {
+        killerName: player.nickname,
+        victimName: target.nickname,
+        killerTeam: player.team,
+      });
     }
   }
 }

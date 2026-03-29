@@ -27,6 +27,18 @@ export class PlayerSchema extends Schema {
   @type("number") hookCooldown: number = 0; // ms remaining
   @type("number") respawnTimer: number = 0; // ms remaining
   @type("number") spawnIndex: number = 0;
+
+  // === Skill: Rot (W) ===
+  @type("boolean") rotActive: boolean = false;
+
+  // === Skill: Phase Shift (E) ===
+  @type("number") phaseTimer: number = 0;      // ms remaining of phase shift
+  @type("number") phaseCooldown: number = 0;    // ms remaining of cooldown
+
+  // === Skill: Dismember (R) ===
+  @type("number") dismemberTimer: number = 0;       // ms remaining of channel
+  @type("string") dismemberTarget: string = "";      // sessionId of target
+  @type("number") dismemberCooldown: number = 0;     // ms remaining of cooldown
 }
 
 export class GameState extends Schema {
