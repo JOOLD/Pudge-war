@@ -4,7 +4,7 @@ import { getRoom, sendInput } from "../network/client";
 import { generateAssets } from "./AssetGenerator";
 import {
   COLORS, MAP_WIDTH, MAP_HEIGHT, PLAYER_RADIUS,
-  HOOK_COOLDOWN, TEAM_LEFT, TEAM_RIGHT,
+  HOOK_COOLDOWN, TEAM_LEFT, TEAM_RIGHT, PLAYER_MAX_HP,
 } from "shared";
 
 interface PlayerSprite {
@@ -13,6 +13,7 @@ interface PlayerSprite {
   nameText: Phaser.GameObjects.Text;
   hpBarBg: Phaser.GameObjects.Rectangle;
   hpBarFill: Phaser.GameObjects.Rectangle;
+  hpText: Phaser.GameObjects.Text;
   cooldownArc: Phaser.GameObjects.Graphics;
   hookChainGfx: Phaser.GameObjects.Graphics;
   hookHead: Phaser.GameObjects.Image | null;
@@ -204,9 +205,17 @@ export class GameScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     // HP bar
-    const hpBarBg = this.add.rectangle(0, PLAYER_RADIUS + 8, 36, 5, COLORS.hpBarBg);
-    const hpBarFill = this.add.rectangle(0, PLAYER_RADIUS + 8, 36, 5,
-      isLeft ? COLORS.teamLeft : COLORS.teamRight);
+    const hpBarBg = this.add.rectangle(0, PLAYER_RADIUS + 8, 50, 5, COLORS.hpBarBg);
+    const hpBarFill = this.add.rectangle(0, PLAYER_RADIUS + 8, 50, 5, 0x7ecf7e); // start green
+
+    // HP text below the bar
+    const hpText = this.add.text(0, PLAYER_RADIUS + 16, `${PLAYER_MAX_HP}/${PLAYER_MAX_HP}`, {
+      fontFamily: "Nunito, sans-serif",
+      fontSize: "9px",
+      color: "#ffffff",
+      stroke: "#333333",
+      strokeThickness: 2,
+    }).setOrigin(0.5, 0);
 
     // Cooldown indicator
     const cooldownArc = this.add.graphics();
@@ -219,7 +228,7 @@ export class GameScene extends Phaser.Scene {
 
     // Container
     const container = this.add.container(player.x, player.y, [
-      hookChainGfx, aimLine, body, nameText, hpBarBg, hpBarFill, cooldownArc,
+      hookChainGfx, aimLine, body, nameText, hpBarBg, hpBarFill, hpText, cooldownArc,
     ]);
     container.setDepth(10);
 
@@ -229,6 +238,7 @@ export class GameScene extends Phaser.Scene {
       nameText,
       hpBarBg,
       hpBarFill,
+      hpText,
       cooldownArc,
       hookChainGfx,
       hookHead: null,
@@ -247,9 +257,19 @@ export class GameScene extends Phaser.Scene {
     player.listen("alive", (value: boolean) => { spriteData.serverAlive = value; });
 
     player.listen("hp", (value: number) => {
-      const pct = value / 100;
+      const pct = value / PLAYER_MAX_HP;
       spriteData.hpBarFill.setScale(pct, 1);
-      spriteData.hpBarFill.setX(-18 * (1 - pct));
+      spriteData.hpBarFill.setX(-25 * (1 - pct)); // half of 50px width
+      // Color: green -> yellow -> red
+      if (pct > 0.6) {
+        spriteData.hpBarFill.setFillStyle(0x7ecf7e); // green
+      } else if (pct > 0.3) {
+        spriteData.hpBarFill.setFillStyle(0xe8d44d); // yellow
+      } else {
+        spriteData.hpBarFill.setFillStyle(0xff6b6b); // red
+      }
+      // Update HP text
+      spriteData.hpText.setText(`${Math.ceil(value)}/${PLAYER_MAX_HP}`);
     });
 
     player.listen("hookCooldown", (value: number) => {

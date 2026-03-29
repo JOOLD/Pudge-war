@@ -42,3 +42,21 @@ export interface GameOverData {
   leftScore: number;
   rightScore: number;
 }
+
+// Skill input messages (Client -> Server)
+export interface SkillMessage {
+  skill: 'rot' | 'phase' | 'dismember';
+}
+
+// Buy message (Client -> Server)
+export interface BuyMessage {
+  upgradeId: string;
+}
+
+// Upgrade definitions
+export type UpgradeId =
+  | 'hook_range' | 'hook_speed' | 'hook_cooldown'
+  | 'rot_damage' | 'rot_radius'
+  | 'phase_duration' | 'phase_cooldown'
+  | 'dismember_damage' | 'dismember_duration'
+  | 'hp_max' | 'hp_regen' | 'move_speed';

@@ -7,20 +7,46 @@ export const RIVER_X = (MAP_WIDTH - RIVER_WIDTH) / 2; // river left edge
 // === Player ===
 export const PLAYER_RADIUS = 20;
 export const PLAYER_SPEED = 160; // pixels per second
-export const PLAYER_MAX_HP = 100;
-export const RESPAWN_TIME = 3000; // ms
+export const PLAYER_MAX_HP = 500;
+export const RESPAWN_TIME = 5000; // ms (longer respawn with HP system)
 
 // === Hook ===
 export const HOOK_SPEED = 600; // pixels per second
 export const HOOK_RADIUS = 8;
 export const HOOK_MAX_RANGE = 500; // max distance hook can travel
-export const HOOK_COOLDOWN = 4000; // ms
+export const HOOK_COOLDOWN = 6000; // ms (longer CD, more abilities now)
 export const HOOK_PULL_SPEED = 400; // pixels per second when pulling target
-export const HOOK_DAMAGE = 100; // instant kill on pull
+export const HOOK_DAMAGE = 150; // damage on pull (not instant kill)
+export const HOOK_STUN_DURATION = 500; // 0.5 sec stun after pull arrival
+
+// === Healing ===
+export const SPAWN_HEAL_RADIUS = 100; // heal zone around spawn
+export const SPAWN_HEAL_RATE = 20; // HP per second in spawn zone
+
+// === Rot Skill ===
+export const ROT_RADIUS = 80;
+export const ROT_DAMAGE = 30; // damage per second to enemies
+export const ROT_SELF_DAMAGE = 10; // damage per second to self
+
+// === Phase Shift Skill ===
+export const PHASE_DURATION = 1000; // 1 second
+export const PHASE_COOLDOWN = 12000; // 12 seconds
+
+// === Dismember Skill ===
+export const DISMEMBER_RANGE = 40; // must be within this distance
+export const DISMEMBER_DAMAGE = 80; // damage per second
+export const DISMEMBER_DURATION = 2000; // 2 seconds
+export const DISMEMBER_COOLDOWN = 10000;
+
+// === Gold ===
+export const GOLD_PER_KILL = 100;
+export const GOLD_PER_ASSIST = 50;
+export const GOLD_PASSIVE_RATE = 5; // per second
+export const ASSIST_WINDOW = 10000; // 10 seconds
 
 // === Game ===
 export const TICK_RATE = 20; // server updates per second
-export const KILLS_TO_WIN = 10;
+export const KILLS_TO_WIN = 15; // games take longer now
 export const MAX_PLAYERS_PER_TEAM = 3;
 export const MAX_PLAYERS = MAX_PLAYERS_PER_TEAM * 2;
 

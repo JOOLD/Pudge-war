@@ -27,6 +27,15 @@ export class PlayerSchema extends Schema {
   @type("number") hookCooldown: number = 0; // ms remaining
   @type("number") respawnTimer: number = 0; // ms remaining
   @type("number") spawnIndex: number = 0;
+  @type("boolean") rotActive: boolean = false;
+  @type("number") phaseTimer: number = 0;      // ms remaining of phase shift
+  @type("number") phaseCooldown: number = 0;    // ms remaining of phase cooldown
+  @type("number") dismemberTimer: number = 0;   // ms remaining of dismember channel
+  @type("string") dismemberTarget: string = ""; // sessionId of dismember target
+  @type("number") dismemberCooldown: number = 0;
+  @type("number") stunTimer: number = 0;        // ms remaining of stun (from hook)
+  @type("number") gold: number = 0;
+  @type("number") assists: number = 0;
 }
 
 export class GameState extends Schema {
@@ -36,4 +45,5 @@ export class GameState extends Schema {
   @type("number") rightScore: number = 0;
   @type("number") winningTeam: number = -1;
   @type("string") roomCode: string = "";
+  @type("number") gameTime: number = 0; // elapsed time in ms
 }
