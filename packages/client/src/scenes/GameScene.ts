@@ -230,6 +230,7 @@ export class GameScene extends Phaser.Scene {
       this.soundManager.playHookHit();
     });
 
+<<<<<<< HEAD
     // Hook blocked by obstacle
     this.room.onMessage("hookBlocked", (data: { x: number; y: number; obstacleType: string }) => {
       const count = data.obstacleType === 'tree' ? 6 : 8;
@@ -252,6 +253,28 @@ export class GameScene extends Phaser.Scene {
           onComplete: () => particle.destroy(),
         });
       }
+=======
+    // Hook bounce effect
+    this.room.onMessage("hookBounce", (data: any) => {
+      this.showBounceEffect(data.x, data.y);
+    });
+
+    // Headshot effect
+    this.room.onMessage("headshot", (data: any) => {
+      this.showHeadshotEffect(data.x, data.y, data.victimName);
+    });
+
+    // Game over
+    this.room.onMessage("gameOver", (data: any) => {
+      const overlay = document.getElementById("game-over")!;
+      const winnerText = document.getElementById("winner-text")!;
+      const finalScore = document.getElementById("final-score")!;
+
+      overlay.classList.add("visible");
+      winnerText.textContent = data.winningTeam === TEAM_LEFT
+        ? "🌿 左隊獲勝！" : "🌸 右隊獲勝！";
+      finalScore.textContent = `${data.leftScore} : ${data.rightScore}`;
+>>>>>>> worktree-agent-aecd704e
     });
 
     // Phase shift notification
@@ -741,7 +764,108 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
+<<<<<<< HEAD
   private showKillFeed(killer: string, victim: string, killerTeam: number, suicide?: boolean) {
+=======
+  private showBounceEffect(x: number, y: number) {
+    // Spark particle burst at bounce point
+    const sparkCount = 6;
+    for (let i = 0; i < sparkCount; i++) {
+      const angle = (Math.PI * 2 * i) / sparkCount;
+      const spark = this.add.circle(x, y, 3, 0xffd700, 1).setDepth(20);
+      const dist = 20 + Math.random() * 10;
+      this.tweens.add({
+        targets: spark,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        alpha: 0,
+        scale: 0.2,
+        duration: 300,
+        ease: "Power2",
+        onComplete: () => spark.destroy(),
+      });
+    }
+
+    // Central flash
+    const flash = this.add.circle(x, y, 8, 0xffffff, 0.8).setDepth(20);
+    this.tweens.add({
+      targets: flash,
+      alpha: 0,
+      scale: 2,
+      duration: 200,
+      onComplete: () => flash.destroy(),
+    });
+  }
+
+  private showHeadshotEffect(x: number, y: number, victimName: string) {
+    // Large explosion at headshot location
+    const ringCount = 3;
+    for (let i = 0; i < ringCount; i++) {
+      const ring = this.add.circle(x, y, 10, 0xff0000, 0).setDepth(25);
+      ring.setStrokeStyle(3 - i, 0xff4444);
+      this.tweens.add({
+        targets: ring,
+        scale: 3 + i * 1.5,
+        alpha: 0,
+        duration: 400 + i * 150,
+        delay: i * 80,
+        onComplete: () => ring.destroy(),
+      });
+    }
+
+    // Spark explosion
+    const sparkCount = 12;
+    for (let i = 0; i < sparkCount; i++) {
+      const angle = (Math.PI * 2 * i) / sparkCount;
+      const spark = this.add.circle(x, y, 4, 0xff3333, 1).setDepth(25);
+      const dist = 40 + Math.random() * 20;
+      this.tweens.add({
+        targets: spark,
+        x: x + Math.cos(angle) * dist,
+        y: y + Math.sin(angle) * dist,
+        alpha: 0,
+        scale: 0.1,
+        duration: 500,
+        ease: "Power3",
+        onComplete: () => spark.destroy(),
+      });
+    }
+
+    // "HEADSHOT!" text in center of screen
+    const cam = this.cameras.main;
+    const headshotText = this.add.text(
+      cam.scrollX + cam.width / 2,
+      cam.scrollY + cam.height / 2 - 60,
+      "HEADSHOT!",
+      {
+        fontFamily: "Nunito, sans-serif",
+        fontSize: "48px",
+        fontStyle: "bold",
+        color: "#ff2222",
+        stroke: "#000000",
+        strokeThickness: 6,
+      }
+    ).setOrigin(0.5).setDepth(200).setScrollFactor(0);
+
+    // Position relative to camera
+    headshotText.setPosition(cam.width / 2, cam.height / 2 - 60);
+
+    this.tweens.add({
+      targets: headshotText,
+      alpha: 0,
+      y: headshotText.y - 30,
+      scale: 1.3,
+      duration: 2000,
+      ease: "Power2",
+      onComplete: () => headshotText.destroy(),
+    });
+
+    // Camera shake for dramatic impact
+    this.cameras.main.shake(300, 0.015);
+  }
+
+  private showKillFeed(killer: string, victim: string, killerTeam: number) {
+>>>>>>> worktree-agent-aecd704e
     const feed = document.getElementById("kill-feed")!;
     const entry = document.createElement("div");
     entry.className = "kill-entry";

@@ -9,6 +9,9 @@ export class HookSchema extends Schema {
   @type("string") targetId: string = ""; // sessionId of hooked player
   @type("number") startX: number = 0;
   @type("number") startY: number = 0;
+  @type("number") bounces: number = 0;
+  @type("number") prevX: number = 0;
+  @type("number") prevY: number = 0;
 }
 
 export class PlayerSchema extends Schema {

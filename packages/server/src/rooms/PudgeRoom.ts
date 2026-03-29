@@ -16,7 +16,12 @@ import {
 import { InputMessage, HookState, GamePhase } from "shared";
 import {
   movePlayer, moveHook, pullTarget, returnHook,
+<<<<<<< HEAD
   circleCollision, normalize, distance, clampPlayerPosition,
+=======
+  circleCollision, normalize, checkHeadshots,
+  FlyingHook,
+>>>>>>> worktree-agent-aecd704e
 } from "../physics/collision";
 
 export class PudgeRoom extends Room<GameState> {
@@ -152,6 +157,7 @@ export class PudgeRoom extends Room<GameState> {
       player.hookCooldown = 0;
       player.respawnTimer = 0;
       player.hook.state = "idle";
+<<<<<<< HEAD
 
       // Reset ability states
       player.rotActive = false;
@@ -178,6 +184,9 @@ export class PudgeRoom extends Room<GameState> {
       player.upgradeHpRegen = 0;
       player.upgradeMoveSpeed = 0;
 
+=======
+      player.hook.bounces = 0;
+>>>>>>> worktree-agent-aecd704e
       this.respawnPlayer(player);
     });
 
@@ -201,12 +210,16 @@ export class PudgeRoom extends Room<GameState> {
     player.hp = this.getEffectiveMaxHp(player);
     player.alive = true;
     player.hook.state = "idle";
+<<<<<<< HEAD
 
     // Reset ability states on respawn
     player.rotActive = false;
     player.phaseActive = false;
     player.dismemberActive = false;
     player.dismemberTargetId = "";
+=======
+    player.hook.bounces = 0;
+>>>>>>> worktree-agent-aecd704e
   }
 
   private releaseHookedTarget(owner: PlayerSchema) {
@@ -217,6 +230,7 @@ export class PudgeRoom extends Room<GameState> {
       }
       owner.hook.state = "idle";
       owner.hook.targetId = "";
+      owner.hook.bounces = 0;
     }
   }
 
@@ -424,7 +438,16 @@ export class PudgeRoom extends Room<GameState> {
     const dt = 1 / TICK_RATE;
     const dtMs = 1000 / TICK_RATE;
 
+    // Store previous hook positions for headshot detection
+    const flyingHooks: FlyingHook[] = [];
+
     this.state.players.forEach((player, sessionId) => {
+      // Capture previous hook position BEFORE movement
+      if (player.hook.state === "flying") {
+        player.hook.prevX = player.hook.x;
+        player.hook.prevY = player.hook.y;
+      }
+
       // Handle respawn timer
       if (!player.alive) {
         player.respawnTimer -= dtMs;
@@ -493,6 +516,63 @@ export class PudgeRoom extends Room<GameState> {
       // Spawn healing
       this.processSpawnHeal(player, dt);
     });
+
+    // Collect flying hooks AFTER movement for headshot detection
+    this.state.players.forEach((player, sessionId) => {
+      if (player.hook.state === "flying") {
+        flyingHooks.push({
+          ownerId: sessionId,
+          ownerTeam: player.team,
+          x: player.hook.x,
+          y: player.hook.y,
+          prevX: player.hook.prevX,
+          prevY: player.hook.prevY,
+        });
+      }
+    });
+
+    // Check for headshots (crossing hooks from different teams)
+    if (flyingHooks.length >= 2) {
+      const playerList: Array<{ id: string; x: number; y: number; team: number; alive: boolean }> = [];
+      this.state.players.forEach((p, id) => {
+        playerList.push({ id, x: p.x, y: p.y, team: p.team, alive: p.alive });
+      });
+
+      const headshots = checkHeadshots(flyingHooks, playerList);
+      for (const hs of headshots) {
+        const victim = this.state.players.get(hs.victimId);
+        if (!victim || !victim.alive) continue;
+
+        // Instant kill
+        victim.alive = false;
+        victim.hp = 0;
+        victim.deaths++;
+        victim.respawnTimer = RESPAWN_TIME;
+
+        // Find killer (hook owner from opposite team closest to intersection)
+        // Credit kill to both hook owners
+        for (const fh of flyingHooks) {
+          if (fh.ownerTeam !== victim.team) {
+            const killer = this.state.players.get(fh.ownerId);
+            if (killer) {
+              killer.kills++;
+              if (killer.team === TEAM_LEFT) {
+                this.state.leftScore++;
+              } else {
+                this.state.rightScore++;
+              }
+              break; // Only credit one killer per victim
+            }
+          }
+        }
+
+        this.broadcast("headshot", {
+          victimName: victim.nickname,
+          x: hs.x,
+          y: hs.y,
+        });
+      }
+    }
 
     // Check win condition
     if (this.state.leftScore >= KILLS_TO_WIN) {
@@ -617,17 +697,47 @@ export class PudgeRoom extends Room<GameState> {
           hook.dirY = dir.y;
           hook.state = "flying";
           hook.targetId = "";
+<<<<<<< HEAD
           player.hookCooldown = this.getEffectiveHookCooldown(player);
+=======
+          hook.bounces = 0;
+          hook.prevX = player.x;
+          hook.prevY = player.y;
+          player.hookCooldown = HOOK_COOLDOWN;
+>>>>>>> worktree-agent-aecd704e
         }
         break;
 
       case "flying": {
+<<<<<<< HEAD
         // Move hook forward using effective speed
         const hookSpeed = this.getEffectiveHookSpeed(player);
         const newX = hook.x + hook.dirX * hookSpeed * dt;
         const newY = hook.y + hook.dirY * hookSpeed * dt;
         hook.x = newX;
         hook.y = newY;
+=======
+        // Move hook forward with bounce support
+        const result = moveHook(
+          hook.x, hook.y, hook.dirX, hook.dirY,
+          hook.startX, hook.startY, dt,
+          hook.bounces
+        );
+        hook.x = result.x;
+        hook.y = result.y;
+        hook.dirX = result.dirX;
+        hook.dirY = result.dirY;
+        hook.bounces = result.newBounces;
+
+        // Broadcast bounce effect to clients
+        if (result.bounced) {
+          this.broadcast("hookBounce", {
+            x: result.x,
+            y: result.y,
+            ownerId: player.id,
+          });
+        }
+>>>>>>> worktree-agent-aecd704e
 
         // Check out of range using effective range
         const hookRange = this.getEffectiveHookRange(player);
@@ -689,6 +799,16 @@ export class PudgeRoom extends Room<GameState> {
 
           hook.state = "idle";
           hook.targetId = "";
+<<<<<<< HEAD
+=======
+          hook.bounces = 0;
+
+          this.broadcast("kill", {
+            killerName: player.nickname,
+            victimName: target.nickname,
+            killerTeam: player.team,
+          });
+>>>>>>> worktree-agent-aecd704e
         }
         break;
       }
@@ -700,6 +820,7 @@ export class PudgeRoom extends Room<GameState> {
 
         if (ret.arrived) {
           hook.state = "idle";
+          hook.bounces = 0;
         }
         break;
       }

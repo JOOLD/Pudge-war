@@ -18,6 +18,7 @@ export const HOOK_COOLDOWN = 6000; // ms (longer CD, more abilities now)
 export const HOOK_PULL_SPEED = 400; // pixels per second when pulling target
 export const HOOK_DAMAGE = 150; // damage on pull (not instant kill)
 export const HOOK_STUN_DURATION = 500; // 0.5 sec stun after pull arrival
+export const HOOK_MAX_BOUNCES = 3; // max wall/obstacle bounces before hook expires
 
 // === Healing ===
 export const SPAWN_HEAL_RADIUS = 100; // heal zone around spawn
