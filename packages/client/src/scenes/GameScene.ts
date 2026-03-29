@@ -50,22 +50,23 @@ interface PlayerSprite {
 export class GameScene extends Phaser.Scene {
   private room!: Room;
   private players: Map<string, PlayerSprite> = new Map();
-  private keys!: {
+  private freeCamKeys!: {
     W: Phaser.Input.Keyboard.Key;
     A: Phaser.Input.Keyboard.Key;
     S: Phaser.Input.Keyboard.Key;
     D: Phaser.Input.Keyboard.Key;
   };
   private skillKeys!: {
-    KEY1: Phaser.Input.Keyboard.Key;
-    KEY2: Phaser.Input.Keyboard.Key;
-    KEY3: Phaser.Input.Keyboard.Key;
-    KEY4: Phaser.Input.Keyboard.Key;
+    Q: Phaser.Input.Keyboard.Key;
+    W: Phaser.Input.Keyboard.Key;
+    E: Phaser.Input.Keyboard.Key;
+    R: Phaser.Input.Keyboard.Key;
   };
   private myId: string = "";
   private mouseWorldX: number = 0;
   private mouseWorldY: number = 0;
   private wantHook: boolean = false;
+  private rightMouseDown: boolean = false;
   private scoreText!: Phaser.GameObjects.Text;
   private soundManager!: SoundManager;
   private touchControls: TouchControls | null = null;
@@ -73,6 +74,7 @@ export class GameScene extends Phaser.Scene {
   private localPlayerDead: boolean = false;
   private freeCamX: number = 0;
   private freeCamY: number = 0;
+  private moveIndicator!: Phaser.GameObjects.Graphics;
 
   constructor() {
     super({ key: "GameScene" });
@@ -102,6 +104,10 @@ export class GameScene extends Phaser.Scene {
 
     // Setup camera
     this.cameras.main.setBounds(0, 0, MAP_WIDTH, MAP_HEIGHT);
+
+    // Move indicator for right-click movement (desktop only)
+    this.moveIndicator = this.add.graphics();
+    this.moveIndicator.setDepth(1);
 
     // Score display
     this.scoreText = this.add.text(MAP_WIDTH / 2, 16, "0 : 0", {
@@ -139,35 +145,50 @@ export class GameScene extends Phaser.Scene {
         this.room.send("skill", { skill: skillId });
       });
     } else {
-      // Keyboard input (desktop)
-      if (this.input.keyboard) {
-        this.keys = {
-          W: this.input.keyboard.addKey("W"),
-          A: this.input.keyboard.addKey("A"),
-          S: this.input.keyboard.addKey("S"),
-          D: this.input.keyboard.addKey("D"),
-        };
-        this.skillKeys = {
-          KEY1: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.ONE),
-          KEY2: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.TWO),
-          KEY3: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.THREE),
-          KEY4: this.input.keyboard.addKey(Phaser.Input.Keyboard.KeyCodes.FOUR),
-        };
-      }
+      // Desktop: Dota-style right-click to move + QWER abilities
+      // NO WASD movement — WASD is only used for free camera when dead
 
-      // Mouse
+      // Track mouse position
       this.input.on("pointermove", (pointer: Phaser.Input.Pointer) => {
         this.mouseWorldX = pointer.worldX;
         this.mouseWorldY = pointer.worldY;
       });
 
+      // Right click = move, Left click = hook
       this.input.on("pointerdown", (pointer: Phaser.Input.Pointer) => {
-        // Resume audio on first user interaction
         this.soundManager.tryResume();
+        if (pointer.rightButtonDown()) {
+          this.rightMouseDown = true;
+        }
         if (pointer.leftButtonDown()) {
           this.wantHook = true;
         }
       });
+
+      this.input.on("pointerup", (pointer: Phaser.Input.Pointer) => {
+        if (!pointer.rightButtonDown()) {
+          this.rightMouseDown = false;
+        }
+      });
+
+      // Disable right-click context menu on game canvas
+      this.game.canvas.addEventListener("contextmenu", (e) => e.preventDefault());
+
+      // QWER skill keys + WASD for dead free-cam
+      if (this.input.keyboard) {
+        this.skillKeys = {
+          Q: this.input.keyboard.addKey("Q"),
+          W: this.input.keyboard.addKey("W"),
+          E: this.input.keyboard.addKey("E"),
+          R: this.input.keyboard.addKey("R"),
+        };
+        this.freeCamKeys = {
+          W: this.input.keyboard.addKey("W"),
+          A: this.input.keyboard.addKey("A"),
+          S: this.input.keyboard.addKey("S"),
+          D: this.input.keyboard.addKey("D"),
+        };
+      }
     }
 
     // Resume audio on any touch (for mobile)
@@ -268,28 +289,38 @@ export class GameScene extends Phaser.Scene {
       // One-shot: reset after reading
       if (this.touchControls.wantHook) this.touchControls.wantHook = false;
     } else {
-      if (this.keys && !this.localPlayerDead) {
-        if (this.keys.A.isDown) dx -= 1;
-        if (this.keys.D.isDown) dx += 1;
-        if (this.keys.W.isDown) dy -= 1;
-        if (this.keys.S.isDown) dy += 1;
+      // Desktop: right-click movement
+      if (this.rightMouseDown && !this.localPlayerDead) {
+        const mySprite = this.players.get(this.myId);
+        if (mySprite) {
+          // Calculate direction from player to mouse
+          const pdx = this.mouseWorldX - mySprite.container.x;
+          const pdy = this.mouseWorldY - mySprite.container.y;
+          const dist = Math.sqrt(pdx * pdx + pdy * pdy);
+
+          if (dist > 5) { // Dead zone - stop when close enough
+            dx = pdx / dist; // Normalized direction
+            dy = pdy / dist;
+          }
+        }
       }
+
       hook = this.localPlayerDead ? false : this.wantHook;
       this.wantHook = false;
     }
 
-    // Skill key presses (desktop only, not when dead)
+    // Skill key presses (desktop QWER, not when dead)
     if (this.skillKeys && !this.localPlayerDead) {
-      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.KEY1)) {
+      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.Q)) {
         this.wantHook = true;
       }
-      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.KEY2)) {
+      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.W)) {
         this.room.send("skill", { skill: "rot" });
       }
-      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.KEY3)) {
+      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.E)) {
         this.room.send("skill", { skill: "phase" });
       }
-      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.KEY4)) {
+      if (Phaser.Input.Keyboard.JustDown(this.skillKeys.R)) {
         this.room.send("skill", { skill: "dismember" });
       }
     }
@@ -383,15 +414,31 @@ export class GameScene extends Phaser.Scene {
       }
     });
 
+    // Move indicator for right-click movement (desktop only)
+    this.moveIndicator.clear();
+    if (this.rightMouseDown && !this.localPlayerDead && !this.touchControls) {
+      this.moveIndicator.lineStyle(1.5, 0xffd93d, 0.4);
+      this.moveIndicator.strokeCircle(this.mouseWorldX, this.mouseWorldY, 8);
+      // Small cross in center
+      this.moveIndicator.lineBetween(
+        this.mouseWorldX - 4, this.mouseWorldY,
+        this.mouseWorldX + 4, this.mouseWorldY
+      );
+      this.moveIndicator.lineBetween(
+        this.mouseWorldX, this.mouseWorldY - 4,
+        this.mouseWorldX, this.mouseWorldY + 4
+      );
+    }
+
     // Camera: follow player, or free cam when dead
     if (this.localPlayerDead) {
-      // Free camera movement with WASD while dead
+      // Free camera movement with WASD while dead (desktop)
       const camSpeed = 300 * (delta / 1000);
-      if (this.keys) {
-        if (this.keys.A.isDown) this.freeCamX -= camSpeed;
-        if (this.keys.D.isDown) this.freeCamX += camSpeed;
-        if (this.keys.W.isDown) this.freeCamY -= camSpeed;
-        if (this.keys.S.isDown) this.freeCamY += camSpeed;
+      if (this.freeCamKeys) {
+        if (this.freeCamKeys.A.isDown) this.freeCamX -= camSpeed;
+        if (this.freeCamKeys.D.isDown) this.freeCamX += camSpeed;
+        if (this.freeCamKeys.W.isDown) this.freeCamY -= camSpeed;
+        if (this.freeCamKeys.S.isDown) this.freeCamY += camSpeed;
       }
       // Clamp to map bounds
       this.freeCamX = Math.max(0, Math.min(MAP_WIDTH, this.freeCamX));
