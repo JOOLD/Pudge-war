@@ -88,6 +88,17 @@ export class PlayerSchema extends Schema {
   @type("number") healOverTime: number = 0;   // remaining heal from salve
   @type("number") bonusDamage: number = 0;     // permanent from tomes
   @type("number") bonusMaxHp: number = 0;      // permanent from tomes
+
+  // Skill purchase state (Lane C)
+  @type("boolean") hasRot: boolean = false;
+  @type("boolean") hasPhase: boolean = false;
+  @type("string") hookModifier: string = "none";
+
+  // Hook modifier effect timers (Lane C)
+  @type("number") burnTimer: number = 0;
+  @type("number") burnDamage: number = 0;
+  @type("number") slowTimer: number = 0;
+  @type("number") slowPercent: number = 0;
 }
 
 export class GameState extends Schema {

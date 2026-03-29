@@ -14,7 +14,10 @@ import {
   HP_PER_LEVEL, SPEED_PER_LEVEL, HOOK_DAMAGE_PER_LEVEL, HOOK_RANGE_LEVEL_BONUSES,
   // Consumable constants
   CONSUMABLES,
+  // Hook modifier constants (Lane C)
+  HOOK_MODIFIERS,
 } from "shared";
+import type { HookModifier } from "shared";
 import { InputMessage, HookState, GamePhase } from "shared";
 import {
   movePlayer, moveHook, pullTarget, returnHook,
@@ -57,13 +60,43 @@ export class PudgeRoom extends Room<GameState> {
       }
     });
 
-    // Handle buy consumable
-    this.onMessage("buy", (client, msg: { itemId: string }) => {
+    // Handle buy (consumables + abilities + hook modifiers)
+    this.onMessage("buy", (client, msg: { itemId?: string; upgradeId?: string }) => {
       if (this.state.phase !== GamePhase.PLAYING) return;
       const player = this.state.players.get(client.sessionId);
       if (!player || !player.alive) return;
 
-      const def = CONSUMABLES.find(c => c.id === msg.itemId);
+      const id = msg.itemId || msg.upgradeId;
+      if (!id) return;
+
+      // === Ability purchases (Lane C) ===
+      if (id === 'rot') {
+        if (player.hasRot || player.gold < 200) return;
+        player.gold -= 200;
+        player.hasRot = true;
+        this.broadcast("abilityPurchased", { nickname: player.nickname, ability: 'rot', sessionId: client.sessionId });
+        return;
+      }
+      if (id === 'phase') {
+        if (player.hasPhase || player.gold < 300) return;
+        player.gold -= 300;
+        player.hasPhase = true;
+        this.broadcast("abilityPurchased", { nickname: player.nickname, ability: 'phase', sessionId: client.sessionId });
+        return;
+      }
+
+      // === Hook modifier purchases (Lane C) ===
+      const hookMod = HOOK_MODIFIERS.find(m => m.id === id);
+      if (hookMod) {
+        if (player.gold < hookMod.cost) return;
+        player.gold -= hookMod.cost;
+        player.hookModifier = hookMod.id;
+        this.broadcast("hookModPurchased", { nickname: player.nickname, modifier: hookMod.id, sessionId: client.sessionId });
+        return;
+      }
+
+      // === Consumable purchases (Lane B) ===
+      const def = CONSUMABLES.find(c => c.id === id);
       if (!def) return;
       if (player.gold < def.cost) return;
 
@@ -199,6 +232,17 @@ export class PudgeRoom extends Room<GameState> {
       player.bonusDamage = 0;
       player.bonusMaxHp = 0;
 
+      // Reset skill purchase state (Lane C)
+      player.hasRot = false;
+      player.hasPhase = false;
+      player.hookModifier = "none";
+
+      // Reset hook modifier effect timers (Lane C)
+      player.burnTimer = 0;
+      player.burnDamage = 0;
+      player.slowTimer = 0;
+      player.slowPercent = 0;
+
       this.respawnPlayer(player);
     });
 
@@ -284,6 +328,38 @@ export class PudgeRoom extends Room<GameState> {
       // === Rune pickup check ===
       this.checkRunePickup(player);
 
+      // === Process burn damage over time (Lane C) ===
+      if (player.burnTimer > 0) {
+        player.hp -= player.burnDamage * dt;
+        player.burnTimer -= dtMs;
+        if (player.burnTimer <= 0) {
+          player.burnTimer = 0;
+          player.burnDamage = 0;
+        }
+        // Check death from burn
+        if (player.hp <= 0) {
+          player.alive = false;
+          player.hp = 0;
+          player.deaths++;
+          player.respawnTimer = RESPAWN_TIME;
+          this.broadcast("kill", {
+            killerName: "burn",
+            victimName: player.nickname,
+            killerTeam: -1,
+          });
+          return;
+        }
+      }
+
+      // === Process slow timer (Lane C) ===
+      if (player.slowTimer > 0) {
+        player.slowTimer -= dtMs;
+        if (player.slowTimer <= 0) {
+          player.slowTimer = 0;
+          player.slowPercent = 0;
+        }
+      }
+
       const input = this.playerInputs.get(sessionId);
       if (!input) return;
 
@@ -293,7 +369,11 @@ export class PudgeRoom extends Room<GameState> {
 
       // Move player (only if not being pulled)
       if (player.hook.state !== "hit" || player.hook.targetId !== sessionId) {
-        const speed = this.getEffectiveMoveSpeed(player);
+        let speed = this.getEffectiveMoveSpeed(player);
+        // Apply slow effect from hook modifier (Lane C)
+        if (player.slowTimer > 0 && player.slowPercent > 0) {
+          speed *= (1 - player.slowPercent);
+        }
         const pos = this.movePlayerWithSpeed(player.x, player.y, input.dx, input.dy, player.team, dt, speed);
         player.x = pos.x;
         player.y = pos.y;
@@ -355,9 +435,12 @@ export class PudgeRoom extends Room<GameState> {
 
       case "flying": {
         // Move hook forward
-        const result = moveHook(hook.x, hook.y, hook.dirX, hook.dirY, hook.startX, hook.startY, dt);
+        const result = moveHook(hook.x, hook.y, hook.dirX, hook.dirY, hook.startX, hook.startY, dt, hook.bounces);
         hook.x = result.x;
         hook.y = result.y;
+        hook.dirX = result.dirX;
+        hook.dirY = result.dirY;
+        hook.bounces = result.newBounces;
 
         // Check out of range (with level bonus range extending base HOOK_MAX_RANGE)
         const bonusRange = this.getEffectiveHookRange(player);
@@ -416,12 +499,38 @@ export class PudgeRoom extends Room<GameState> {
         hook.y = target.y;
 
         if (pullResult.arrived) {
-          // Apply hook damage
+          // Apply hook damage (Lane B: level-scaled)
           const hookDamage = this.getEffectiveHookDamage(player);
           target.hp -= hookDamage;
 
+          // Apply hook modifier effects (Lane C)
+          switch (player.hookModifier as HookModifier) {
+            case 'flame':
+              target.burnTimer = 3000;
+              target.burnDamage = 20;
+              break;
+            case 'freeze':
+              target.slowTimer = 3000;
+              target.slowPercent = 0.5;
+              break;
+            case 'lifesteal': {
+              const healAmount = hookDamage * 0.3;
+              player.hp = Math.min(player.hp + healAmount, this.getEffectiveMaxHp(player));
+              break;
+            }
+            case 'rupture': {
+              // Extra damage based on pull distance
+              const pullDist = distance(
+                { x: hook.startX, y: hook.startY },
+                { x: target.x, y: target.y }
+              );
+              const extraDmg = Math.floor(pullDist / 10);
+              target.hp -= extraDmg;
+              break;
+            }
+          }
+
           if (target.hp <= 0) {
-            // Kill the target
             target.alive = false;
             target.hp = 0;
             target.deaths++;

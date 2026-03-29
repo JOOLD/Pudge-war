@@ -1,6 +1,6 @@
 import Phaser from "phaser";
 import { Room } from "colyseus.js";
-import { getRoom, sendInput } from "../network/client";
+import { getRoom, sendInput, sendBuy } from "../network/client";
 import { generateAssets } from "./AssetGenerator";
 import { SoundManager } from "../audio/SoundManager";
 import { TouchControls } from "../controls/TouchControls";
@@ -9,7 +9,21 @@ import { playRotToggle, playPhaseShift, playDismember } from "../audio/SoundMana
 import {
   COLORS, MAP_WIDTH, MAP_HEIGHT, PLAYER_RADIUS,
   HOOK_COOLDOWN, TEAM_LEFT, TEAM_RIGHT, PLAYER_MAX_HP, OBSTACLES,
+  SPAWN_X_LEFT, SPAWN_X_RIGHT,
 } from "shared";
+import type { HookModifier } from "shared";
+import { ShopUI } from "../ui/ShopUI";
+
+// Map hook modifier to chain color
+function getHookModColor(modifier: string): number {
+  switch (modifier as HookModifier) {
+    case 'flame': return 0xff6600;
+    case 'freeze': return 0x66ccff;
+    case 'lifesteal': return 0xff3333;
+    case 'rupture': return 0x9933ff;
+    default: return COLORS.hookChain;
+  }
+}
 
 // Skill constants (matching server)
 const PHASE_COOLDOWN = 12000;
@@ -45,6 +59,8 @@ interface PlayerSprite {
   phaseTimer: number;
   dismemberTimer: number;
   dismemberTarget: string;
+  // Hook modifier color (Lane C)
+  hookModColor: number;
 }
 
 export class GameScene extends Phaser.Scene {
@@ -75,6 +91,8 @@ export class GameScene extends Phaser.Scene {
   private freeCamX: number = 0;
   private freeCamY: number = 0;
   private moveIndicator!: Phaser.GameObjects.Graphics;
+  private shopUI!: ShopUI;
+  private goldText!: Phaser.GameObjects.Text;
 
   constructor() {
     super({ key: "GameScene" });
@@ -126,6 +144,21 @@ export class GameScene extends Phaser.Scene {
     this.add.text(MAP_WIDTH / 2 + 60, 18, "🌸", {
       fontSize: "20px",
     }).setOrigin(0, 0).setDepth(100);
+
+    // Shop UI (Lane C)
+    this.shopUI = new ShopUI((upgradeId: string) => {
+      sendBuy(upgradeId);
+    });
+
+    // Gold display (in-game HUD, Lane C)
+    this.goldText = this.add.text(MAP_WIDTH / 2, 48, '💰 0', {
+      fontFamily: 'Nunito, sans-serif',
+      fontSize: '16px',
+      fontStyle: 'bold',
+      color: '#ffd93d',
+      stroke: '#333333',
+      strokeThickness: 3,
+    }).setOrigin(0.5, 0).setScrollFactor(0).setDepth(100);
 
     // Skill bar UI
     this.skillBar = new SkillBar();
@@ -188,6 +221,17 @@ export class GameScene extends Phaser.Scene {
           S: this.input.keyboard.addKey("S"),
           D: this.input.keyboard.addKey("D"),
         };
+
+        // B key to toggle shop (only near spawn, Lane C)
+        this.input.keyboard.addKey("B").on("down", () => {
+          const myPlayer = this.room.state.players.get(this.myId) as any;
+          if (!myPlayer || !myPlayer.alive) return;
+          const spawnX = myPlayer.team === TEAM_LEFT ? SPAWN_X_LEFT : SPAWN_X_RIGHT;
+          const dist = Math.abs(myPlayer.x - spawnX);
+          if (dist < 150) {
+            this.shopUI.toggle();
+          }
+        });
       }
     }
 
@@ -230,7 +274,6 @@ export class GameScene extends Phaser.Scene {
       this.soundManager.playHookHit();
     });
 
-<<<<<<< HEAD
     // Hook blocked by obstacle
     this.room.onMessage("hookBlocked", (data: { x: number; y: number; obstacleType: string }) => {
       const count = data.obstacleType === 'tree' ? 6 : 8;
@@ -253,7 +296,8 @@ export class GameScene extends Phaser.Scene {
           onComplete: () => particle.destroy(),
         });
       }
-=======
+    });
+
     // Hook bounce effect
     this.room.onMessage("hookBounce", (data: any) => {
       this.showBounceEffect(data.x, data.y);
@@ -264,17 +308,17 @@ export class GameScene extends Phaser.Scene {
       this.showHeadshotEffect(data.x, data.y, data.victimName);
     });
 
-    // Game over
-    this.room.onMessage("gameOver", (data: any) => {
-      const overlay = document.getElementById("game-over")!;
-      const winnerText = document.getElementById("winner-text")!;
-      const finalScore = document.getElementById("final-score")!;
+    // Ability purchased notification (Lane C)
+    this.room.onMessage("abilityPurchased", (data: any) => {
+      if (data.sessionId === this.myId) {
+        if (data.ability === 'rot') this.skillBar.setSkillLocked('rot', false);
+        if (data.ability === 'phase') this.skillBar.setSkillLocked('phase', false);
+      }
+    });
 
-      overlay.classList.add("visible");
-      winnerText.textContent = data.winningTeam === TEAM_LEFT
-        ? "🌿 左隊獲勝！" : "🌸 右隊獲勝！";
-      finalScore.textContent = `${data.leftScore} : ${data.rightScore}`;
->>>>>>> worktree-agent-aecd704e
+    // Hook modifier purchased notification (Lane C)
+    this.room.onMessage("hookModPurchased", (_data: any) => {
+      // Visual feedback handled by schema listener
     });
 
     // Phase shift notification
@@ -406,6 +450,20 @@ export class GameScene extends Phaser.Scene {
       }
     } else if (mySprite) {
       mySprite.hookRangeGfx.clear();
+    }
+
+    // Update gold display and shop state (Lane C)
+    {
+      const myState2 = this.room.state.players.get(this.myId) as any;
+      if (myState2) {
+        this.goldText.setText(`💰 ${myState2.gold}`);
+        this.shopUI.updatePlayerState(
+          myState2.gold,
+          myState2.hasRot,
+          myState2.hasPhase,
+          myState2.hookModifier
+        );
+      }
     }
 
     // Update all player sprites with interpolation
@@ -551,6 +609,7 @@ export class GameScene extends Phaser.Scene {
       phaseTimer: 0,
       dismemberTimer: 0,
       dismemberTarget: "",
+      hookModColor: COLORS.hookChain,
     };
 
     this.players.set(sessionId, spriteData);
@@ -580,6 +639,21 @@ export class GameScene extends Phaser.Scene {
         }
       }
     });
+
+    // Listen for hook modifier changes
+    player.listen("hookModifier", (value: string) => {
+      spriteData.hookModColor = getHookModColor(value);
+    });
+
+    // Listen for skill purchase state (for local player skill bar)
+    if (sessionId === this.myId) {
+      player.listen("hasRot", (value: boolean) => {
+        this.skillBar.setSkillLocked('rot', !value);
+      });
+      player.listen("hasPhase", (value: boolean) => {
+        this.skillBar.setSkillLocked('phase', !value);
+      });
+    }
 
     player.listen("hp", (value: number) => {
       const pct = value / PLAYER_MAX_HP;
@@ -696,8 +770,9 @@ export class GameScene extends Phaser.Scene {
       const hx = hookSchema.x - spriteData.container.x;
       const hy = hookSchema.y - spriteData.container.y;
 
-      // Draw chain
-      spriteData.hookChainGfx.lineStyle(3, COLORS.hookChain, 0.8);
+      // Draw chain (color based on hook modifier)
+      const chainColor = spriteData.hookModColor;
+      spriteData.hookChainGfx.lineStyle(3, chainColor, 0.8);
       spriteData.hookChainGfx.beginPath();
       spriteData.hookChainGfx.moveTo(0, 0);
       spriteData.hookChainGfx.lineTo(hx, hy);
@@ -706,7 +781,7 @@ export class GameScene extends Phaser.Scene {
       // Draw chain links along the line
       const dist = Math.sqrt(hx * hx + hy * hy);
       const steps = Math.floor(dist / 12);
-      spriteData.hookChainGfx.fillStyle(COLORS.hookChain, 1);
+      spriteData.hookChainGfx.fillStyle(chainColor, 1);
       for (let i = 1; i < steps; i++) {
         const t = i / steps;
         spriteData.hookChainGfx.fillCircle(hx * t, hy * t, 2);
@@ -764,9 +839,6 @@ export class GameScene extends Phaser.Scene {
     }
   }
 
-<<<<<<< HEAD
-  private showKillFeed(killer: string, victim: string, killerTeam: number, suicide?: boolean) {
-=======
   private showBounceEffect(x: number, y: number) {
     // Spark particle burst at bounce point
     const sparkCount = 6;
@@ -864,8 +936,7 @@ export class GameScene extends Phaser.Scene {
     this.cameras.main.shake(300, 0.015);
   }
 
-  private showKillFeed(killer: string, victim: string, killerTeam: number) {
->>>>>>> worktree-agent-aecd704e
+  private showKillFeed(killer: string, victim: string, killerTeam: number, suicide?: boolean) {
     const feed = document.getElementById("kill-feed")!;
     const entry = document.createElement("div");
     entry.className = "kill-entry";

@@ -135,6 +135,39 @@ export const CONSUMABLES: ConsumableDef[] = [
   { id: 'tome_hp', name: '體質之書', description: '永久 +100 HP', cost: 150, icon: '📘' },
 ];
 
+// === Ability Shop (Lane C) ===
+export interface AbilityDef {
+  id: string;
+  name: string;
+  description: string;
+  cost: number;
+  icon: string;
+  key: string;
+}
+
+export const ABILITY_SHOP: AbilityDef[] = [
+  { id: 'rot', name: '腐爛', description: 'AOE 毒霧，傷害周圍敵人和自己', cost: 200, icon: '☠️', key: 'W' },
+  { id: 'phase', name: '相位轉移', description: '短暫無敵，躲避鉤子', cost: 300, icon: '✨', key: 'E' },
+];
+
+// === Hook Modifiers (Lane C) ===
+export type HookModifier = 'none' | 'flame' | 'freeze' | 'lifesteal' | 'rupture';
+
+export interface HookModDef {
+  id: HookModifier;
+  name: string;
+  description: string;
+  cost: number;
+  icon: string;
+}
+
+export const HOOK_MODIFIERS: HookModDef[] = [
+  { id: 'flame', name: '火焰鉤', description: '命中後燃燒 20 dmg/s 持續 3s', cost: 400, icon: '🔥' },
+  { id: 'freeze', name: '冰凍鉤', description: '命中後減速 50% 持續 3s', cost: 350, icon: '🧊' },
+  { id: 'lifesteal', name: '吸血鉤', description: '命中傷害的 30% 回血', cost: 300, icon: '💉' },
+  { id: 'rupture', name: '裂傷鉤', description: '拉動距離越遠傷害越高', cost: 350, icon: '💔' },
+];
+
 // === Colors (Animal Crossing pastel palette) ===
 export const COLORS = {
   // Team colors

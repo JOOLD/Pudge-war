@@ -146,3 +146,9 @@ export function sendRestart() {
     room.send("restart");
   }
 }
+
+export function sendBuy(upgradeId: string) {
+  if (room) {
+    room.send("buy", { upgradeId });
+  }
+}

@@ -1,12 +1,8 @@
 import {
   MAP_WIDTH, MAP_HEIGHT, PLAYER_RADIUS, RIVER_X, RIVER_WIDTH,
   HOOK_RADIUS, HOOK_MAX_RANGE, HOOK_SPEED, HOOK_PULL_SPEED,
-<<<<<<< HEAD
-  PLAYER_SPEED, TEAM_LEFT, TEAM_RIGHT,
-  OBSTACLES, ObstacleDef,
-=======
   PLAYER_SPEED, TEAM_LEFT, TEAM_RIGHT, HOOK_MAX_BOUNCES,
->>>>>>> worktree-agent-aecd704e
+  OBSTACLES, ObstacleDef,
 } from "shared";
 
 export interface Vec2 {

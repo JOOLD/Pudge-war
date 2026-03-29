@@ -367,8 +367,10 @@ function initGameUI(room: any) {
   lastGold = 0;
   playerAliveState.clear();
 
-  // Create Shop UI
-  shopUI = new ShopUI(room, room.sessionId);
+  // Create Shop UI (Lane C: callback-based constructor)
+  shopUI = new ShopUI((upgradeId: string) => {
+    room.send("buy", { itemId: upgradeId, upgradeId });
+  });
 
   // Shop button click
   const shopBtn = document.getElementById("hud-shop-btn")!;
@@ -447,21 +449,14 @@ function initGameUI(room: any) {
     // Update shop button state (near spawn or not)
     hud.setShopEnabled(isNearSpawn(r));
 
-    // Update shop if visible
-    if (shopUI?.isVisible()) {
-      const upgrades: Record<string, number> = {};
-      // Read upgrades from player state if available
-      const playerUpgrades = (me as any).upgrades;
-      if (playerUpgrades) {
-        if (typeof playerUpgrades.forEach === "function") {
-          playerUpgrades.forEach((val: number, key: string) => {
-            upgrades[key] = val;
-          });
-        } else if (typeof playerUpgrades === "object") {
-          Object.assign(upgrades, playerUpgrades);
-        }
-      }
-      shopUI.update(gold, upgrades);
+    // Update shop state
+    if (shopUI) {
+      shopUI.updatePlayerState(
+        gold,
+        !!(me as any).hasRot,
+        !!(me as any).hasPhase,
+        (me as any).hookModifier || 'none'
+      );
     }
 
     // Detect death/respawn transitions
