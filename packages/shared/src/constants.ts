@@ -1,54 +1,31 @@
+// ==============================
+// Pudge Wars — Phase 1 Constants
+// ==============================
+
 // === Map ===
 export const MAP_WIDTH = 1200;
 export const MAP_HEIGHT = 800;
 export const RIVER_WIDTH = 120;
-export const RIVER_X = (MAP_WIDTH - RIVER_WIDTH) / 2; // river left edge
+export const RIVER_X = (MAP_WIDTH - RIVER_WIDTH) / 2;
 
 // === Player ===
 export const PLAYER_RADIUS = 20;
-export const PLAYER_SPEED = 160; // pixels per second
-export const PLAYER_MAX_HP = 500;
-export const RESPAWN_TIME = 5000; // ms (longer respawn with HP system)
+export const PLAYER_SPEED = 160;
+export const PLAYER_MAX_HP = 100; // one hook = one kill (classic Pudge Wars)
+export const RESPAWN_TIME = 3000;
 
 // === Hook ===
-export const HOOK_SPEED = 600; // pixels per second
+export const HOOK_SPEED = 600;
 export const HOOK_RADIUS = 8;
-export const HOOK_MAX_RANGE = 500; // max distance hook can travel
-export const HOOK_COOLDOWN = 6000; // ms (longer CD, more abilities now)
-export const HOOK_PULL_SPEED = 400; // pixels per second when pulling target
-export const HOOK_DAMAGE = 150; // damage on pull (not instant kill)
-export const HOOK_STUN_DURATION = 500; // 0.5 sec stun after pull arrival
-export const HOOK_MAX_BOUNCES = 3; // max wall/obstacle bounces before hook expires
-
-// === Healing ===
-export const SPAWN_HEAL_RADIUS = 100; // heal zone around spawn
-export const SPAWN_HEAL_RATE = 20; // HP per second in spawn zone
-
-// === Rot Skill ===
-export const ROT_RADIUS = 80;
-export const ROT_DAMAGE = 30; // damage per second to enemies
-export const ROT_SELF_DAMAGE = 10; // damage per second to self
-
-// === Phase Shift Skill ===
-export const PHASE_DURATION = 1000; // 1 second
-export const PHASE_COOLDOWN = 12000; // 12 seconds
-export const PHASE_SPEED_MULT = 1.5; // speed multiplier during phase
-
-// === Dismember Skill ===
-export const DISMEMBER_RANGE = 40; // must be within this distance
-export const DISMEMBER_DAMAGE = 80; // damage per second
-export const DISMEMBER_DURATION = 2000; // 2 seconds
-export const DISMEMBER_COOLDOWN = 10000;
-
-// === Gold ===
-export const GOLD_PER_KILL = 100;
-export const GOLD_PER_ASSIST = 50;
-export const GOLD_PASSIVE_RATE = 5; // per second
-export const ASSIST_WINDOW = 10000; // 10 seconds
+export const HOOK_MAX_RANGE = 500;
+export const HOOK_COOLDOWN = 4000;
+export const HOOK_PULL_SPEED = 400;
+export const HOOK_DAMAGE = 100; // instant kill
+export const HOOK_MAX_BOUNCES = 3;
 
 // === Game ===
-export const TICK_RATE = 30; // server ticks/sec (client renders at 60fps with interpolation)
-export const KILLS_TO_WIN = 15; // games take longer now
+export const TICK_RATE = 20;
+export const KILLS_TO_WIN = 10;
 export const MAX_PLAYERS_PER_TEAM = 3;
 export const MAX_PLAYERS = MAX_PLAYERS_PER_TEAM * 2;
 
@@ -56,165 +33,20 @@ export const MAX_PLAYERS = MAX_PLAYERS_PER_TEAM * 2;
 export const TEAM_LEFT = 0;
 export const TEAM_RIGHT = 1;
 
-// === Spawn positions (center Y, spread vertically) ===
+// === Spawn ===
 export const SPAWN_X_LEFT = 100;
 export const SPAWN_X_RIGHT = MAP_WIDTH - 100;
-export const SPAWN_Y_OFFSETS = [-100, 0, 100]; // for 3 players
+export const SPAWN_Y_OFFSETS = [-100, 0, 100];
 
-// === Obstacles ===
-export type ObstacleType = 'tree' | 'rock';
-
-export interface ObstacleDef {
-  x: number;
-  y: number;
-  radius: number;
-  type: ObstacleType;
-}
-
-// Trees: block hooks, NOT players (players walk through)
-// Rocks: block BOTH hooks AND players
-// Placed symmetrically on both sides of river
-export const OBSTACLES: ObstacleDef[] = [
-  // Left side trees (3)
-  { x: 180, y: 150, radius: 25, type: 'tree' },
-  { x: 250, y: 400, radius: 25, type: 'tree' },
-  { x: 150, y: 650, radius: 25, type: 'tree' },
-  // Right side trees (3, mirrored)
-  { x: 1020, y: 150, radius: 25, type: 'tree' },
-  { x: 950, y: 400, radius: 25, type: 'tree' },
-  { x: 1050, y: 650, radius: 25, type: 'tree' },
-  // Left side rocks (2)
-  { x: 350, y: 250, radius: 30, type: 'rock' },
-  { x: 300, y: 580, radius: 30, type: 'rock' },
-  // Right side rocks (2, mirrored)
-  { x: 850, y: 250, radius: 30, type: 'rock' },
-  { x: 900, y: 580, radius: 30, type: 'rock' },
-];
-
-// === Runes ===
-export const RUNE_SPAWN_INTERVAL = 60000;  // 60 seconds
-export const RUNE_FIRST_SPAWN = 120000;    // first 2 minutes no runes
-export const RUNE_PICKUP_RADIUS = 30;
-export type RuneType = 'haste' | 'dd' | 'regen' | 'invis';
-export const RUNE_TYPES: RuneType[] = ['haste', 'dd', 'regen', 'invis'];
-export const RUNE_POSITIONS = [
-  { x: MAP_WIDTH / 2, y: 80 },
-  { x: MAP_WIDTH / 2, y: MAP_HEIGHT - 80 },
-];
-export const RUNE_EFFECTS: Record<RuneType, { duration: number; description: string }> = {
-  haste: { duration: 10000, description: '移動速度 +50%' },
-  dd: { duration: 15000, description: 'Hook 傷害 x2' },
-  regen: { duration: 8000, description: '持續回血 50 HP/s' },
-  invis: { duration: 10000, description: '隱身' },
-};
-
-// === Leveling ===
-export const EXP_PER_KILL = 100;
-export const EXP_PER_ASSIST = 40;
-export const MAX_LEVEL = 20;
-export const EXP_PER_LEVEL = 100; // needed = EXP_PER_LEVEL * currentLevel
-export const HP_PER_LEVEL = 10;
-export const SPEED_PER_LEVEL = 2;
-export const HOOK_DAMAGE_PER_LEVEL = 5;
-export const HOOK_RANGE_LEVEL_BONUSES = [5, 10, 15, 20]; // +50 range at these levels
-
-// === Consumables ===
-export interface ConsumableDef {
-  id: string;
-  name: string;
-  description: string;
-  cost: number;
-  icon: string;
-}
-
-export const CONSUMABLES: ConsumableDef[] = [
-  { id: 'salve', name: '治療藥膏', description: '恢復 200 HP (10秒)', cost: 50, icon: '💊' },
-  { id: 'potion', name: '大補藥', description: '即時恢復 300 HP', cost: 100, icon: '🧪' },
-  { id: 'tome_exp', name: '智慧之書', description: '立即升 1 級', cost: 200, icon: '📗' },
-  { id: 'tome_damage', name: '力量之書', description: '永久 +25 傷害', cost: 150, icon: '📕' },
-  { id: 'tome_hp', name: '體質之書', description: '永久 +100 HP', cost: 150, icon: '📘' },
-];
-
-// === Ability Shop (Lane C) ===
-export interface AbilityDef {
-  id: string;
-  name: string;
-  description: string;
-  cost: number;
-  icon: string;
-  key: string;
-}
-
-export const ABILITY_SHOP: AbilityDef[] = [
-  { id: 'rot', name: '腐爛', description: 'AOE 毒霧，傷害周圍敵人和自己', cost: 200, icon: '☠️', key: 'W' },
-  { id: 'phase', name: '相位轉移', description: '短暫無敵，躲避鉤子', cost: 300, icon: '✨', key: 'E' },
-];
-
-// === Hook Modifiers (Lane C) ===
-export type HookModifier = 'none' | 'flame' | 'freeze' | 'lifesteal' | 'rupture';
-
-export interface HookModDef {
-  id: HookModifier;
-  name: string;
-  description: string;
-  cost: number;
-  icon: string;
-}
-
-export const HOOK_MODIFIERS: HookModDef[] = [
-  { id: 'flame', name: '火焰鉤', description: '命中後燃燒 20 dmg/s 持續 3s', cost: 400, icon: '🔥' },
-  { id: 'freeze', name: '冰凍鉤', description: '命中後減速 50% 持續 3s', cost: 350, icon: '🧊' },
-  { id: 'lifesteal', name: '吸血鉤', description: '命中傷害的 30% 回血', cost: 300, icon: '💉' },
-  { id: 'rupture', name: '裂傷鉤', description: '拉動距離越遠傷害越高', cost: 350, icon: '💔' },
-];
-
-// === Colors (Animal Crossing pastel palette) ===
+// === Colors ===
 export const COLORS = {
-  // Team colors
-  teamLeft: 0x7ecfb0,   // mint green
-  teamRight: 0xf6a6b2,  // soft pink
-  // Map
-  grass: 0x8fce6a,      // bright grass green
-  grassDark: 0x7abc5a,  // darker grass for pattern
-  river: 0x6cc4e8,      // cheerful blue
-  riverDeep: 0x52b0d8,  // deeper blue
-  bridge: 0xd4a56a,     // wood brown
-  // UI
-  hpBar: 0xff6b6b,      // health red
-  hpBarBg: 0x3a3a3a,    // health bg
-  cooldownReady: 0xffd93d, // golden yellow
-  cooldownNotReady: 0x888888,
-  // Hook
-  hookChain: 0xc0c0c0,  // silver chain
-  hookHead: 0xe8d44d,   // golden hook tip
+  teamLeft: 0x4488cc,
+  teamRight: 0xcc4444,
+  grass: 0x3a7a2a,
+  grassDark: 0x2d6620,
+  river: 0x2277bb,
+  riverDeep: 0x1a5588,
+  hookChain: 0xc0c0c0,
+  hookHead: 0xe8d44d,
+  hpBarBg: 0x333333,
 };
-
-// === Upgrades ===
-export interface UpgradeDef {
-  id: string;
-  name: string;
-  description: string;
-  baseCost: number;
-  maxLevel: number;
-  costMultiplier: number; // price increases by this factor per level
-}
-
-export const UPGRADES: UpgradeDef[] = [
-  // Hook upgrades
-  { id: 'hook_range', name: '射程強化', description: '射程 +50', baseCost: 100, maxLevel: 3, costMultiplier: 1.5 },
-  { id: 'hook_speed', name: '鉤速強化', description: '速度 +100', baseCost: 100, maxLevel: 3, costMultiplier: 1.5 },
-  { id: 'hook_cooldown', name: '冷卻縮減', description: '冷卻 -1秒', baseCost: 150, maxLevel: 3, costMultiplier: 1.5 },
-  // Rot upgrades
-  { id: 'rot_damage', name: '腐蝕強化', description: '傷害 +10/s', baseCost: 100, maxLevel: 3, costMultiplier: 1.5 },
-  { id: 'rot_radius', name: '腐蝕範圍', description: '範圍 +20', baseCost: 120, maxLevel: 3, costMultiplier: 1.5 },
-  // Phase upgrades
-  { id: 'phase_duration', name: '相位延長', description: '持續 +0.5秒', baseCost: 100, maxLevel: 3, costMultiplier: 1.5 },
-  { id: 'phase_cooldown', name: '相位冷卻', description: '冷卻 -2秒', baseCost: 150, maxLevel: 3, costMultiplier: 1.5 },
-  // Dismember upgrades
-  { id: 'dismember_damage', name: '肢解強化', description: '傷害 +20/s', baseCost: 120, maxLevel: 3, costMultiplier: 1.5 },
-  { id: 'dismember_duration', name: '肢解延長', description: '持續 +0.5秒', baseCost: 150, maxLevel: 3, costMultiplier: 1.5 },
-  // Defense upgrades
-  { id: 'hp_max', name: '生命強化', description: 'HP +100', baseCost: 100, maxLevel: 3, costMultiplier: 1.5 },
-  { id: 'hp_regen', name: '恢復強化', description: '恢復 +5/s', baseCost: 120, maxLevel: 3, costMultiplier: 1.5 },
-  { id: 'move_speed', name: '速度強化', description: '移動 +20', baseCost: 100, maxLevel: 3, costMultiplier: 1.5 },
-];

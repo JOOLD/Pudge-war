@@ -4,59 +4,10 @@ export enum GamePhase {
   FINISHED = "finished",
 }
 
-export enum HookState {
-  IDLE = "idle",
-  FLYING = "flying",
-  HIT = "hit",       // hit a player, pulling them
-  RETURNING = "returning", // missed, returning to owner
-}
-
-export interface Vec2 {
-  x: number;
-  y: number;
-}
-
-// Messages: Client -> Server
 export interface InputMessage {
-  dx: number;  // -1, 0, or 1 (horizontal)
-  dy: number;  // -1, 0, or 1 (vertical)
-  aimX: number; // mouse world X
-  aimY: number; // mouse world Y
-  hook: boolean; // wants to throw hook
+  dx: number;
+  dy: number;
+  aimX: number;
+  aimY: number;
+  hook: boolean;
 }
-
-export interface JoinOptions {
-  nickname: string;
-  roomCode?: string;
-}
-
-// Server -> Client messages
-export interface KillFeedEntry {
-  killerName: string;
-  victimName: string;
-  timestamp: number;
-}
-
-export interface GameOverData {
-  winningTeam: number;
-  leftScore: number;
-  rightScore: number;
-}
-
-// Skill input messages (Client -> Server)
-export interface SkillMessage {
-  skill: 'rot' | 'phase' | 'dismember';
-}
-
-// Buy message (Client -> Server)
-export interface BuyMessage {
-  upgradeId: string;
-}
-
-// Upgrade definitions
-export type UpgradeId =
-  | 'hook_range' | 'hook_speed' | 'hook_cooldown'
-  | 'rot_damage' | 'rot_radius'
-  | 'phase_duration' | 'phase_cooldown'
-  | 'dismember_damage' | 'dismember_duration'
-  | 'hp_max' | 'hp_regen' | 'move_speed';
