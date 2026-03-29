@@ -32,7 +32,7 @@ const ROT_RADIUS = 80;
 
 interface PlayerSprite {
   container: Phaser.GameObjects.Container;
-  body: Phaser.GameObjects.Image;
+  body: Phaser.GameObjects.Sprite;
   nameText: Phaser.GameObjects.Text;
   hpBarBg: Phaser.GameObjects.Rectangle;
   hpBarFill: Phaser.GameObjects.Rectangle;
@@ -100,14 +100,60 @@ export class GameScene extends Phaser.Scene {
     super({ key: "GameScene" });
   }
 
+  preload() {
+    // Character spritesheets (16x16 per frame, 4 cols x 7 rows)
+    this.load.spritesheet('char-left', '/game-assets/char-left.png', {
+      frameWidth: 16, frameHeight: 16,
+    });
+    this.load.spritesheet('char-right', '/game-assets/char-right.png', {
+      frameWidth: 16, frameHeight: 16,
+    });
+
+    // Floor tileset for map tiling (16x16 tiles)
+    this.load.spritesheet('floor-tiles', '/game-assets/tileset-floor.png', {
+      frameWidth: 16, frameHeight: 16,
+    });
+
+    // Village tileset for obstacles (16x16 tiles)
+    this.load.spritesheet('village-tiles', '/game-assets/tileset-village.png', {
+      frameWidth: 16, frameHeight: 16,
+    });
+
+    // UI
+    this.load.image('heart', '/game-assets/heart.png');
+
+    // Particles
+    this.load.image('particle-grass', '/game-assets/particle-grass.png');
+    this.load.image('particle-rock', '/game-assets/particle-rock.png');
+  }
+
   create() {
     const room = getRoom();
     if (!room) return;
     this.room = room;
     this.myId = room.sessionId;
 
-    // Generate all assets
+    // Generate map + hook textures (procedural)
     generateAssets(this);
+
+    // Create character walk animations from spritesheets
+    // Layout: 4 cols x 7 rows, each 16x16
+    // Row 0 (frames 0-3): walk down
+    // Row 1 (frames 4-7): walk up
+    // Row 2 (frames 8-11): walk left
+    // Row 3 (frames 12-15): walk right
+    // Rows 4-6: extra animations (idle uses frame 0)
+    for (const team of ['left', 'right'] as const) {
+      const sheetKey = team === 'left' ? 'char-left' : 'char-right';
+      const prefix = team;
+      if (!this.anims.exists(`${prefix}-walk-down`)) {
+        this.anims.create({ key: `${prefix}-walk-down`, frames: this.anims.generateFrameNumbers(sheetKey, { start: 0, end: 3 }), frameRate: 8, repeat: -1 });
+        this.anims.create({ key: `${prefix}-walk-up`, frames: this.anims.generateFrameNumbers(sheetKey, { start: 4, end: 7 }), frameRate: 8, repeat: -1 });
+        this.anims.create({ key: `${prefix}-walk-left`, frames: this.anims.generateFrameNumbers(sheetKey, { start: 8, end: 11 }), frameRate: 8, repeat: -1 });
+        this.anims.create({ key: `${prefix}-walk-right`, frames: this.anims.generateFrameNumbers(sheetKey, { start: 12, end: 15 }), frameRate: 8, repeat: -1 });
+        this.anims.create({ key: `${prefix}-idle`, frames: [{ key: sheetKey, frame: 0 }], frameRate: 1, repeat: -1 });
+      }
+    }
 
     // Initialize sound manager
     this.soundManager = new SoundManager();
@@ -480,19 +526,31 @@ export class GameScene extends Phaser.Scene {
 
       // Update alive state
       if (!sprite.serverAlive) {
-        sprite.body.setTexture("player-dead");
-        sprite.body.setAlpha(0.5);
-        sprite.body.clearTint();
+        sprite.body.setTint(0x666666);
+        sprite.body.setAlpha(0.4);
+        sprite.body.stop(); // Stop animation when dead
         sprite.rotGfx.clear();
       } else {
-        const tex = sprite.serverTeam === TEAM_LEFT ? "player-left" : "player-right";
-        if (sprite.body.texture.key !== tex) {
-          sprite.body.setTexture(tex);
+        const expectedSheet = sprite.serverTeam === TEAM_LEFT ? "char-left" : "char-right";
+        if (sprite.body.texture.key !== expectedSheet) {
+          sprite.body.setTexture(expectedSheet, 0);
         }
         // Only restore alpha if not phased
         if (sprite.phaseTimer <= 0 && sprite.body.alpha < 1) {
           sprite.body.setAlpha(1);
           sprite.body.clearTint();
+        }
+
+        // Animate based on movement direction
+        const moveDx = sprite.targetX - sprite.container.x;
+        const moveDy = sprite.targetY - sprite.container.y;
+        const animPrefix = sprite.serverTeam === TEAM_LEFT ? 'left' : 'right';
+        if (Math.abs(moveDx) < 0.5 && Math.abs(moveDy) < 0.5) {
+          sprite.body.play(`${animPrefix}-idle`, true);
+        } else if (Math.abs(moveDx) > Math.abs(moveDy)) {
+          sprite.body.play(moveDx > 0 ? `${animPrefix}-walk-right` : `${animPrefix}-walk-left`, true);
+        } else {
+          sprite.body.play(moveDy > 0 ? `${animPrefix}-walk-down` : `${animPrefix}-walk-up`, true);
         }
       }
     });
@@ -530,10 +588,11 @@ export class GameScene extends Phaser.Scene {
 
   private addPlayer(sessionId: string, player: any) {
     const isLeft = player.team === TEAM_LEFT;
-    const texKey = isLeft ? "player-left" : "player-right";
+    const sheetKey = isLeft ? "char-left" : "char-right";
 
-    // Player body
-    const body = this.add.image(0, 0, texKey);
+    // Player body — use spritesheet with animations
+    const body = this.add.sprite(0, 0, sheetKey, 0);
+    body.setScale(2.5); // Scale 16x16 to ~40x40 to match PLAYER_RADIUS
 
     // Nickname
     const nameText = this.add.text(0, -PLAYER_RADIUS - 16, player.nickname, {
