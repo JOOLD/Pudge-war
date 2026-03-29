@@ -51,19 +51,20 @@ export class SkillBar {
 
   private createSlot(def: SkillDef): SkillSlot {
     const element = document.createElement('div');
+    element.className = 'skill-slot';
     element.style.cssText = `
-      width: 48px;
-      height: 48px;
+      width: 56px;
+      height: 56px;
       background: rgba(20, 30, 20, 0.85);
       border: 2px solid ${def.defaultLocked ? '#555' : '#ffd93d'};
-      border-radius: 8px;
+      border-radius: 10px;
       display: flex;
       flex-direction: column;
       align-items: center;
       justify-content: center;
       position: relative;
       opacity: ${def.defaultLocked ? '0.4' : '1'};
-      transition: opacity 0.3s, border-color 0.3s;
+      transition: opacity 0.3s, border-color 0.3s, box-shadow 0.3s;
     `;
 
     const keyLabel = document.createElement('div');
@@ -76,15 +77,15 @@ export class SkillBar {
       background: rgba(0,0,0,0.7);
       color: #ffd93d;
       font-family: 'Nunito', sans-serif;
-      font-size: 10px;
+      font-size: 11px;
       font-weight: bold;
-      padding: 0 4px;
+      padding: 1px 5px;
       border-radius: 3px;
     `;
 
     const iconLabel = document.createElement('div');
     iconLabel.textContent = def.defaultLocked ? '🔒' : def.icon;
-    iconLabel.style.cssText = 'font-size: 20px; line-height: 1;';
+    iconLabel.style.cssText = 'font-size: 22px; line-height: 1;';
 
     const cooldownOverlay = document.createElement('div');
     cooldownOverlay.style.cssText = `
@@ -94,7 +95,7 @@ export class SkillBar {
       right: 0;
       background: rgba(0,0,0,0.6);
       height: 0%;
-      border-radius: 0 0 6px 6px;
+      border-radius: 0 0 8px 8px;
       transition: height 0.1s;
       pointer-events: none;
     `;
@@ -132,15 +133,45 @@ export class SkillBar {
     const slot = this.skills.get(skillId);
     if (!slot || slot.locked) return;
     slot.cooldownOverlay.style.height = `${Math.max(0, Math.min(100, pct * 100))}%`;
+
+    // Pulsing border when ready (off cooldown)
+    if (pct <= 0) {
+      slot.element.style.animation = 'skillReady 1.5s ease-in-out infinite';
+    } else {
+      slot.element.style.animation = '';
+    }
   }
 
   /**
    * Update cooldown display (compatibility with Lane B callers).
+   * Also shows remaining seconds as text for hook cooldown.
    * @param skill - skill id: "hook" | "rot" | "phase" | "dismember"
    * @param progress - 0 = ready, 1 = full cooldown
+   * @param remainingMs - optional remaining ms (for text display)
    */
-  updateCooldown(skill: string, progress: number): void {
+  updateCooldown(skill: string, progress: number, remainingMs?: number): void {
     this.setCooldown(skill, progress);
+
+    // Show seconds remaining text on the cooldown overlay
+    const slot = this.skills.get(skill);
+    if (!slot || slot.locked) return;
+
+    if (progress > 0 && remainingMs !== undefined && remainingMs > 0) {
+      const sec = Math.ceil(remainingMs / 1000);
+      slot.cooldownOverlay.textContent = `${sec}`;
+      slot.cooldownOverlay.style.cssText += `
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        color: white;
+        font-family: 'Nunito', sans-serif;
+        font-size: 14px;
+        font-weight: 700;
+        text-shadow: 0 1px 3px rgba(0,0,0,0.8);
+      `;
+    } else {
+      slot.cooldownOverlay.textContent = '';
+    }
   }
 
   /**
@@ -152,8 +183,9 @@ export class SkillBar {
 
     if (active) {
       slot.element.style.borderColor = "#4eff4e";
-      slot.element.style.boxShadow = "0 0 16px rgba(78, 255, 78, 0.45)";
+      slot.element.style.boxShadow = "0 0 16px rgba(78, 255, 78, 0.45), inset 0 0 8px rgba(78,255,78,0.15)";
       slot.element.style.background = "linear-gradient(180deg, rgba(30,100,20,0.4) 0%, rgba(20,60,15,0.3) 100%)";
+      slot.element.style.animation = '';
     } else {
       slot.element.style.borderColor = "#ffd93d";
       slot.element.style.boxShadow = "";

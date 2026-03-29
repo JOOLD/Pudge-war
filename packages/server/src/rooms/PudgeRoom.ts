@@ -175,6 +175,7 @@ export class PudgeRoom extends Room<GameState> {
         case 'tome_hp':
           player.gold -= def.cost;
           player.bonusMaxHp += 100;
+          player.maxHp = this.getEffectiveMaxHp(player);
           player.hp = Math.min(player.hp + 100, this.getEffectiveMaxHp(player));
           break;
       }
@@ -210,6 +211,7 @@ export class PudgeRoom extends Room<GameState> {
     this.respawnPlayer(player);
 
     player.hp = this.getEffectiveMaxHp(player);
+    player.maxHp = this.getEffectiveMaxHp(player);
     player.alive = true;
     player.hook = new HookSchema();
 
@@ -264,6 +266,7 @@ export class PudgeRoom extends Room<GameState> {
     // Reset all players
     this.state.players.forEach((player) => {
       player.hp = PLAYER_MAX_HP;
+      player.maxHp = PLAYER_MAX_HP;
       player.alive = true;
       player.kills = 0;
       player.deaths = 0;
@@ -330,6 +333,7 @@ export class PudgeRoom extends Room<GameState> {
     }
     player.y = yCenter + yOffset;
     player.hp = this.getEffectiveMaxHp(player);
+    player.maxHp = this.getEffectiveMaxHp(player);
     player.alive = true;
     player.hook.state = "idle";
 
@@ -551,8 +555,16 @@ export class PudgeRoom extends Room<GameState> {
       player.aimX = input.aimX;
       player.aimY = input.aimY;
 
-      // Move player (only if not being pulled or channeling dismember)
-      if ((player.hook.state !== "hit" || player.hook.targetId !== sessionId) && !player.dismemberActive) {
+      // Check if this player is being dismembered by someone else
+      let isBeingDismembered = false;
+      this.state.players.forEach((other) => {
+        if (other.dismemberActive && other.dismemberTargetId === sessionId) {
+          isBeingDismembered = true;
+        }
+      });
+
+      // Move player (only if not being pulled, channeling dismember, or being dismembered)
+      if ((player.hook.state !== "hit" || player.hook.targetId !== sessionId) && !player.dismemberActive && !isBeingDismembered) {
         let speed = this.getEffectiveMoveSpeed(player);
         // Apply slow effect from hook modifier (Lane C)
         if (player.slowTimer > 0 && player.slowPercent > 0) {
@@ -860,6 +872,7 @@ export class PudgeRoom extends Room<GameState> {
 
       // Heal to new max HP on level up
       player.hp = this.getEffectiveMaxHp(player);
+      player.maxHp = this.getEffectiveMaxHp(player);
 
       this.broadcast("levelUp", { nickname: player.nickname, level: player.level });
     }

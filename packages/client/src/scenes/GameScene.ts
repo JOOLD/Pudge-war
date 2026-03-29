@@ -400,9 +400,9 @@ export class GameScene extends Phaser.Scene {
       // Hook cooldown
       const myState = this.room.state.players.get(this.myId) as any;
       if (myState) {
-        this.skillBar.updateCooldown("hook", myState.hookCooldown / HOOK_COOLDOWN);
-        this.skillBar.updateCooldown("phase", myState.phaseCooldown / PHASE_COOLDOWN);
-        this.skillBar.updateCooldown("dismember", myState.dismemberCooldown / DISMEMBER_COOLDOWN);
+        this.skillBar.updateCooldown("hook", myState.hookCooldown / HOOK_COOLDOWN, myState.hookCooldown);
+        this.skillBar.updateCooldown("phase", myState.phaseCooldown / PHASE_COOLDOWN, myState.phaseCooldown);
+        this.skillBar.updateCooldown("dismember", myState.dismemberCooldown / DISMEMBER_COOLDOWN, myState.dismemberCooldown);
         this.skillBar.setActive("rot", myState.rotActive);
       }
     }
@@ -656,9 +656,10 @@ export class GameScene extends Phaser.Scene {
     }
 
     player.listen("hp", (value: number) => {
-      const pct = value / PLAYER_MAX_HP;
-      spriteData.hpBarFill.setScale(pct, 1);
-      spriteData.hpBarFill.setX(-25 * (1 - pct)); // half of 50px width
+      const maxHp = player.maxHp || PLAYER_MAX_HP;
+      const pct = value / maxHp;
+      spriteData.hpBarFill.setScale(Math.max(0, pct), 1);
+      spriteData.hpBarFill.setX(-25 * (1 - Math.max(0, pct))); // half of 50px width
       // Color: green -> yellow -> red
       if (pct > 0.6) {
         spriteData.hpBarFill.setFillStyle(0x7ecf7e); // green
@@ -668,7 +669,7 @@ export class GameScene extends Phaser.Scene {
         spriteData.hpBarFill.setFillStyle(0xff6b6b); // red
       }
       // Update HP text
-      spriteData.hpText.setText(`${Math.ceil(value)}/${PLAYER_MAX_HP}`);
+      spriteData.hpText.setText(`${Math.ceil(value)}/${Math.ceil(maxHp)}`);
     });
 
     // === Skill state listeners ===
@@ -738,6 +739,30 @@ export class GameScene extends Phaser.Scene {
     });
     player.listen("dismemberTargetId", (value: string) => {
       spriteData.dismemberTarget = value;
+    });
+
+    // Slow visual: blue tint when slowed (Lane C)
+    player.listen("slowTimer", (value: number) => {
+      if (value > 0) {
+        spriteData.body.setTint(0x6699ff);
+      } else if (spriteData.phaseTimer <= 0) {
+        // Only clear tint if not phased and not burning
+        if (player.burnTimer <= 0) {
+          spriteData.body.clearTint();
+        }
+      }
+    });
+
+    // Burn visual: orange tint when burning (Lane C)
+    player.listen("burnTimer", (value: number) => {
+      if (value > 0) {
+        spriteData.body.setTint(0xff6600);
+      } else if (spriteData.phaseTimer <= 0) {
+        // Only clear tint if not phased and not slowed
+        if (player.slowTimer <= 0) {
+          spriteData.body.clearTint();
+        }
+      }
     });
 
     player.listen("hookCooldown", (value: number) => {
@@ -940,11 +965,12 @@ export class GameScene extends Phaser.Scene {
     const feed = document.getElementById("kill-feed")!;
     const entry = document.createElement("div");
     entry.className = "kill-entry";
+    const teamClass = killerTeam === TEAM_LEFT ? "killer-left" : "killer-right";
     const teamEmoji = killerTeam === TEAM_LEFT ? "🌿" : "🌸";
     if (suicide) {
-      entry.innerHTML = `${teamEmoji} <b>${killer}</b> ☠️ 自爆了`;
+      entry.innerHTML = `${teamEmoji} <span class="${teamClass}">${killer}</span> ☠️ 自爆了`;
     } else {
-      entry.innerHTML = `${teamEmoji} <b>${killer}</b> 🎣 ${victim}`;
+      entry.innerHTML = `${teamEmoji} <span class="${teamClass}">${killer}</span> ⚔️ <span class="victim">${victim}</span>`;
     }
     feed.appendChild(entry);
 

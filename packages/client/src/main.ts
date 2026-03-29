@@ -347,6 +347,8 @@ let shopUI: ShopUI | null = null;
 let lastGold = 0;
 // Track per-player alive state for detecting death/respawn transitions
 const playerAliveState: Map<string, boolean> = new Map();
+// Track last killer name for death screen
+let lastKillerName: string = '';
 
 // Distance threshold to consider "near spawn" for shop
 const SHOP_SPAWN_DISTANCE = 150;
@@ -369,7 +371,7 @@ function initGameUI(room: any) {
 
   // Create Shop UI (Lane C: callback-based constructor)
   shopUI = new ShopUI((upgradeId: string) => {
-    room.send("buy", { itemId: upgradeId, upgradeId });
+    room.send("buy", { upgradeId });
   });
 
   // Shop button click
@@ -409,6 +411,11 @@ function initGameUI(room: any) {
     const myPlayer = room.state.players.get(room.sessionId);
     if (myPlayer && (data.killerName === myPlayer.nickname)) {
       hud.showKillStreak(streak);
+    }
+
+    // Track if local player was killed — store killer name for death screen
+    if (myPlayer && data.victimName === myPlayer.nickname && data.killerName !== myPlayer.nickname) {
+      lastKillerName = data.killerName;
     }
 
     // Record death for the victim to reset their streak
@@ -468,7 +475,8 @@ function initGameUI(room: any) {
         if (!isAlive && id === r.sessionId) {
           // Local player died
           const respawnMs = player.respawnTimer || 3000;
-          hud!.showDeathScreen(respawnMs);
+          hud!.showDeathScreen(respawnMs, lastKillerName || undefined);
+          lastKillerName = '';
           hud!.recordDeath(id);
         } else if (isAlive && id === r.sessionId) {
           // Local player respawned

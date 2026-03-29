@@ -88,6 +88,7 @@ export class PlayerSchema extends Schema {
   @type("number") healOverTime: number = 0;   // remaining heal from salve
   @type("number") bonusDamage: number = 0;     // permanent from tomes
   @type("number") bonusMaxHp: number = 0;      // permanent from tomes
+  @type("number") maxHp: number = 500;         // effective max HP (synced to client)
 
   // Skill purchase state (Lane C)
   @type("boolean") hasRot: boolean = false;

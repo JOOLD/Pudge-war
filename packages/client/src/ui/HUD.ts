@@ -14,6 +14,7 @@ export class HUD {
   private timerDisplay: HTMLDivElement;
   private killStreakDisplay: HTMLDivElement;
   private deathOverlay: HTMLDivElement;
+  private deathKillerInfo: HTMLDivElement;
   private deathText: HTMLDivElement;
   private shopButton: HTMLDivElement;
 
@@ -29,6 +30,7 @@ export class HUD {
     this.timerDisplay = document.getElementById("hud-timer") as HTMLDivElement;
     this.killStreakDisplay = document.getElementById("hud-kill-streak") as HTMLDivElement;
     this.deathOverlay = document.getElementById("death-overlay") as HTMLDivElement;
+    this.deathKillerInfo = document.getElementById("death-killer-info") as HTMLDivElement;
     this.deathText = document.getElementById("death-text") as HTMLDivElement;
     this.shopButton = document.getElementById("hud-shop-btn") as HTMLDivElement;
   }
@@ -93,8 +95,15 @@ export class HUD {
     }, 2500);
   }
 
-  showDeathScreen(respawnMs: number): void {
+  showDeathScreen(respawnMs: number, killerName?: string): void {
     this.deathOverlay.classList.add("visible");
+
+    // Show killer info if available
+    if (killerName) {
+      this.deathKillerInfo.textContent = `你被 ${killerName} 擊殺`;
+    } else {
+      this.deathKillerInfo.textContent = '';
+    }
 
     // Apply grayscale to game canvas
     const container = document.getElementById("game-container");
