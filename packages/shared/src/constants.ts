@@ -91,6 +91,50 @@ export const OBSTACLES: ObstacleDef[] = [
   { x: 900, y: 580, radius: 30, type: 'rock' },
 ];
 
+// === Runes ===
+export const RUNE_SPAWN_INTERVAL = 60000;  // 60 seconds
+export const RUNE_FIRST_SPAWN = 120000;    // first 2 minutes no runes
+export const RUNE_PICKUP_RADIUS = 30;
+export type RuneType = 'haste' | 'dd' | 'regen' | 'invis';
+export const RUNE_TYPES: RuneType[] = ['haste', 'dd', 'regen', 'invis'];
+export const RUNE_POSITIONS = [
+  { x: MAP_WIDTH / 2, y: 80 },
+  { x: MAP_WIDTH / 2, y: MAP_HEIGHT - 80 },
+];
+export const RUNE_EFFECTS: Record<RuneType, { duration: number; description: string }> = {
+  haste: { duration: 10000, description: '移動速度 +50%' },
+  dd: { duration: 15000, description: 'Hook 傷害 x2' },
+  regen: { duration: 8000, description: '持續回血 50 HP/s' },
+  invis: { duration: 10000, description: '隱身' },
+};
+
+// === Leveling ===
+export const EXP_PER_KILL = 100;
+export const EXP_PER_ASSIST = 40;
+export const MAX_LEVEL = 20;
+export const EXP_PER_LEVEL = 100; // needed = EXP_PER_LEVEL * currentLevel
+export const HP_PER_LEVEL = 10;
+export const SPEED_PER_LEVEL = 2;
+export const HOOK_DAMAGE_PER_LEVEL = 5;
+export const HOOK_RANGE_LEVEL_BONUSES = [5, 10, 15, 20]; // +50 range at these levels
+
+// === Consumables ===
+export interface ConsumableDef {
+  id: string;
+  name: string;
+  description: string;
+  cost: number;
+  icon: string;
+}
+
+export const CONSUMABLES: ConsumableDef[] = [
+  { id: 'salve', name: '治療藥膏', description: '恢復 200 HP (10秒)', cost: 50, icon: '💊' },
+  { id: 'potion', name: '大補藥', description: '即時恢復 300 HP', cost: 100, icon: '🧪' },
+  { id: 'tome_exp', name: '智慧之書', description: '立即升 1 級', cost: 200, icon: '📗' },
+  { id: 'tome_damage', name: '力量之書', description: '永久 +25 傷害', cost: 150, icon: '📕' },
+  { id: 'tome_hp', name: '體質之書', description: '永久 +100 HP', cost: 150, icon: '📘' },
+];
+
 // === Colors (Animal Crossing pastel palette) ===
 export const COLORS = {
   // Team colors
