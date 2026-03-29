@@ -2,7 +2,7 @@
 <html lang="zh-TW">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
   <title>🎣 勾肥大戰 - Pudge Wars Online</title>
   <style>
     @import url('https://fonts.googleapis.com/css2?family=Nunito:wght@400;700;900&display=swap');
@@ -228,6 +228,43 @@
       border: 3px solid #e6c235; background: #ffd93d; color: #5a3a00;
       font-weight: 700; cursor: pointer; margin-top: 8px;
     }
+
+    /* Share bar */
+    #share-bar {
+      position: absolute;
+      bottom: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 5;
+      display: none;
+    }
+
+    #share-bar.visible { display: block; }
+
+    #btn-share {
+      font-family: 'Nunito', sans-serif;
+      font-size: 16px;
+      padding: 10px 24px;
+      border-radius: 12px;
+      border: 3px solid #e6c235;
+      background: #ffd93d;
+      color: #5a3a00;
+      font-weight: 700;
+      cursor: pointer;
+      transition: transform 0.1s, box-shadow 0.3s;
+    }
+
+    #btn-share:hover { transform: scale(1.05); }
+    #btn-share:active { transform: scale(0.95); }
+
+    #btn-share.share-highlight {
+      animation: sharePulse 0.6s ease-in-out 3;
+    }
+
+    @keyframes sharePulse {
+      0%, 100% { box-shadow: 0 0 0 0 rgba(255, 217, 61, 0.7); }
+      50% { box-shadow: 0 0 16px 6px rgba(255, 217, 61, 0.9); }
+    }
   </style>
 </head>
 <body>
@@ -265,6 +302,11 @@
 
     <!-- Kill feed -->
     <div id="kill-feed"></div>
+
+    <!-- Share bar -->
+    <div id="share-bar">
+      <button id="btn-share">📋 分享房間連結</button>
+    </div>
 
     <!-- Game over -->
     <div id="game-over">

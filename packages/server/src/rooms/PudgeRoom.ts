@@ -52,6 +52,11 @@ export class PudgeRoom extends Room<GameState> {
   }
 
   onJoin(client: Client, options: any) {
+    // Log referral source if present
+    if (options.ref) {
+      console.log(`[ref] Player ${client.sessionId} joined via ref=${options.ref}`);
+    }
+
     const player = new PlayerSchema();
     player.id = client.sessionId;
     player.nickname = options.nickname || `Player${this.clients.length}`;
@@ -83,18 +88,37 @@ export class PudgeRoom extends Room<GameState> {
     });
   }
 
-  onLeave(client: Client) {
+  async onLeave(client: Client, consented?: boolean) {
     const player = this.state.players.get(client.sessionId);
-    if (player) {
-      if (player.team === TEAM_LEFT) this.leftCount--;
-      else this.rightCount--;
+    if (!player) return;
 
-      // Release any hooked players
-      this.releaseHookedTarget(player);
-
-      this.state.players.delete(client.sessionId);
-      this.broadcast("playerLeft", { nickname: player.nickname });
+    if (consented) {
+      // Player deliberately left — immediate cleanup
+      this.cleanupPlayer(client.sessionId, player);
+      return;
     }
+
+    // Unexpected disconnect — allow reconnection (60s for LINE/WeChat tab suspend)
+    try {
+      await this.allowReconnection(client, 60);
+      // Player reconnected successfully — nothing to clean up
+      console.log(`[reconnect] Player ${player.nickname} reconnected`);
+    } catch {
+      // Reconnection timed out — do cleanup
+      console.log(`[reconnect] Player ${player.nickname} reconnection timed out`);
+      this.cleanupPlayer(client.sessionId, player);
+    }
+  }
+
+  private cleanupPlayer(sessionId: string, player: PlayerSchema) {
+    if (player.team === TEAM_LEFT) this.leftCount--;
+    else this.rightCount--;
+
+    // Release any hooked players
+    this.releaseHookedTarget(player);
+
+    this.state.players.delete(sessionId);
+    this.broadcast("playerLeft", { nickname: player.nickname });
   }
 
   onDispose() {

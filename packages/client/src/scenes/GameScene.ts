@@ -118,17 +118,7 @@ export class GameScene extends Phaser.Scene {
       this.cameras.main.shake(100, 0.005);
     });
 
-    // Game over
-    this.room.onMessage("gameOver", (data: any) => {
-      const overlay = document.getElementById("game-over")!;
-      const winnerText = document.getElementById("winner-text")!;
-      const finalScore = document.getElementById("final-score")!;
-
-      overlay.classList.add("visible");
-      winnerText.textContent = data.winningTeam === TEAM_LEFT
-        ? "🌿 左隊獲勝！" : "🌸 右隊獲勝！";
-      finalScore.textContent = `${data.leftScore} : ${data.rightScore}`;
-    });
+    // Game over is handled by main.ts DOM centralization
   }
 
   update(_time: number, delta: number) {
