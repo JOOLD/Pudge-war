@@ -75,7 +75,15 @@ async function onJoinRoom() {
 function enterWaitingRoom(room: any) {
   lobby.classList.add("hidden");
   waiting.classList.add("visible");
-  displayRoomCode.textContent = room.state.roomCode;
+
+  // Room code might not be synced yet — listen for it
+  const code = room.state.roomCode;
+  if (code) {
+    displayRoomCode.textContent = code;
+  }
+  room.state.listen("roomCode", (val: string) => {
+    if (val) displayRoomCode.textContent = val;
+  });
 
   const updatePlayerList = () => {
     teamLeftPlayers.innerHTML = "";
