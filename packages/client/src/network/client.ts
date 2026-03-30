@@ -23,7 +23,11 @@ export async function createRoom(nickname: string): Promise<Room> {
 }
 
 export async function joinRoom(roomCode: string, nickname: string): Promise<Room> {
-  const r = await getClient().join("pudge", { roomCode, nickname });
+  // Find room by code via our custom endpoint, then join by roomId
+  const resp = await fetch(`/api/find-room/${roomCode}`);
+  if (!resp.ok) throw new Error("房間不存在或已滿");
+  const { roomId } = await resp.json();
+  const r = await getClient().joinById(roomId, { nickname });
   room = r;
   return r;
 }

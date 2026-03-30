@@ -19,6 +19,7 @@ export class PudgeRoom extends Room<GameState> {
     const state = new GameState();
     state.roomCode = this.generateRoomCode();
     this.setState(state);
+    this.setMetadata({ roomCode: state.roomCode });
     this.maxClients = MAX_PLAYERS;
 
     this.onMessage("input", (client, msg: InputMessage) => {
